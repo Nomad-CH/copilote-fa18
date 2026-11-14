@@ -1,0 +1,94 @@
+# Fabrique l'application Windows et son installateur, puis publie la version.
+# Se declenche quand une etiquette vX.Y.Z est poussee (ou a la main pour essayer).
+name: Publier une version
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Version
+        shell: pwsh
+        run: |
+          $v = python -c "import copilote; print(copilote.__version__)"
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "v$v") {
+            Write-Error "L'etiquette $env:GITHUB_REF_NAME ne correspond pas a la version $v"
+            exit 1
+          }
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Tests
+        run: python -m unittest discover -s tests -v
+
+      - name: hidapi (pilote du Stream Deck)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/libusb/hidapi/releases/download/hidapi-0.14.0/hidapi-win.zip -OutFile hidapi.zip
+          Expand-Archive hidapi.zip -DestinationPath hidapi_zip
+          Copy-Item hidapi_zip/x64/hidapi.dll .
+
+      - name: Application
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --windowed --name CopiloteF18 --icon icone.ico `
+            --add-data "polices;polices" `
+            --add-data "dcsbios_json;dcsbios_json" `
+            --add-data "outils/CopiloteExport.lua;outils" `
+            --add-data "config_defaut.json;." `
+            --add-data "icone.ico;." `
+            --add-binary "hidapi.dll;." `
+            --collect-all edge_tts --collect-data certifi `
+            --hidden-import StreamDeck.Transport.LibUSBHIDAPI `
+            lanceur.py
+          Copy-Item hidapi.dll dist/CopiloteF18/
+
+      - name: Installateur
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Essai de demarrage de l'application
+        shell: pwsh
+        run: |
+          $p = Start-Process dist/CopiloteF18/CopiloteF18.exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) {
+            Get-Content "$env:LOCALAPPDATA/CopiloteF18/journal.txt" -ErrorAction SilentlyContinue
+            Write-Error "L'application s'est fermee toute seule au demarrage"
+            exit 1
+          }
+          Stop-Process -Id $p.Id
+          Get-Content "$env:LOCALAPPDATA/CopiloteF18/journal.txt" -ErrorAction SilentlyContinue
+
+      - name: Publication
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sortie/CopiloteF18-Setup.exe
+          body_path: NOTES_VERSION.md
+
+      - name: Installateur (essai manuel)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CopiloteF18-Setup
+          path: sortie/CopiloteF18-Setup.exe

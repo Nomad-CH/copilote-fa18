@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+build/
+dist/
+sortie/
+hidapi.dll
+hidapi.zip
+hidapi_zip/
+*.spec
+boite_noire/
+voix_cache/
+voix_piper/
+config.json
