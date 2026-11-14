@@ -103,7 +103,7 @@ def page_armes(app):
         _bascule(app, "LTD_R_SW", "LASER", ("SAFE", "ARMÉ"), (GRIS, ROUGE)),
         _larguer(app, "chaff"),
         _selecteur(app, "IR_COOL_SW", "REFROID. IR", 3, {"NORM": VERT, "ORIDE": AMBRE}),
-        _voyant_bouton(app, "RWR_POWER_BTN", "RWR_LOWER_LT", "RWR"),
+        _rwr(app),
 
         _selecteur(app, "CMSD_DISPENSE_SW", "LEURRES", 3, {"ON": VERT, "BYPASS": AMBRE}),
         _selecteur(app, "ECM_MODE_SW", "BROUILLEUR", 5,
@@ -135,6 +135,12 @@ def _larguer(app, sorte):
     arriere = leurres IR. Le copilote verifie au compteur que c'est parti."""
     titre = "PAILLETTES" if sorte == "chaff" else "LEURRE IR"
     return Touche("LARGUER", titre, BLEU, lambda: app.larguer(sorte))
+
+
+def _rwr(app):
+    etat = app.a.rwr_allume
+    texte = "?" if etat is None else ("ON" if etat else "OFF")
+    return Touche("RWR", texte, VERT if etat else GRIS, lambda: app.appui_bouton("RWR_POWER_BTN"))
 
 
 def _abrege(nom):
@@ -214,9 +220,8 @@ def _verriere(app):
 
 def _frein(app):
     serre = app.a.frein_parking
-    # entree DCS-BIOS : 2 = serrer le frein de parking, 1 = le relacher
     return Touche("FREIN PARK", "SERRÉ" if serre else "LIBRE", AMBRE if serre else GRIS,
-                  lambda: app.regler("EMERGENCY_PARKING_BRAKE_ROTATE", 1 if serre else 2))
+                  lambda: app.frein_parking(not serre), True)
 
 
 def _ailes(app):

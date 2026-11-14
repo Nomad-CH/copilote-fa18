@@ -25,6 +25,7 @@ class Copilote:
         self.b, self.cfg, self.ecran = bios, cfg, ecran
         self.export = export
         self.a = Avion(bios)
+        self.a.export = export
         self.voix = Voix.depuis_config(cfg)
         try:
             from .voix import phrases_connues
@@ -91,6 +92,30 @@ class Copilote:
         """action : 'suivante' (pleine -> barre -> cachee) ou 'coin'."""
         self.demandes_fenetre.put(action)
 
+    def frein_parking(self, serrer):
+        threading.Thread(target=self._frein_parking, args=(serrer,), daemon=True).start()
+
+    def _frein_parking(self, serrer):
+        """Poignee en deux temps : tirer puis tourner pour serrer ; tourner en
+        arriere puis repousser pour relacher. Verifie, et le note s'il echoue."""
+        b = self.b
+        if serrer:
+            b.envoyer("EMERGENCY_PARKING_BRAKE_PULL", 1)
+            time.sleep(0.4)
+            b.envoyer("EMERGENCY_PARKING_BRAKE_ROTATE", 2)
+        else:
+            b.envoyer("EMERGENCY_PARKING_BRAKE_ROTATE", 1)
+            time.sleep(0.4)
+            b.envoyer("EMERGENCY_PARKING_BRAKE_PULL", 0)
+        time.sleep(1.0)
+        if self.a.frein_parking == serrer:
+            self.dire("Frein de parking serré." if serrer else "Frein de parking relâché.")
+        else:
+            self.dire("Négatif. Frein de parking à ta charge.")
+            self.boite.ecrire("frein_parking_echec", serrer=serrer,
+                              pull=b.lire("EMERGENCY_PARKING_BRAKE_PULL"),
+                              rotate=b.lire("EMERGENCY_PARKING_BRAKE_ROTATE"))
+
     def radio(self, apres_menu=""):
         """Ouvre le menu radio de DCS puis enchaine des touches F (ex. "F5 F1 F1")."""
         threading.Thread(target=self._radio, args=(apres_menu,), daemon=True).start()
@@ -108,13 +133,19 @@ class Copilote:
                 return
 
     def demander_ravito(self):
-        sequence = self.cfg.get("radio_ravito", "").strip()
+        """Au sol : equipe au sol, rearmement et plein. En vol : ravitailleur."""
+        if self.a.au_sol:
+            sequence = self.cfg.get("radio_sol", "F8 F1").strip()
+            message = "Demande réarmement et plein."
+        else:
+            sequence = self.cfg.get("radio_ravito", "").strip()
+            message = "Demande de ravitaillement."
         if not sequence:
             self.radio("")
-            self.dire("Menu radio ouvert. Séquence ravitaillement à régler dans la fenêtre.")
+            self.dire("Menu radio ouvert. Séquence ravitailleur à régler dans la fenêtre.")
             return
         self.radio(sequence)
-        self.dire("Demande de ravitaillement.")
+        self.dire(message)
 
     def marquer(self):
         n = self.boite.marquer(self)

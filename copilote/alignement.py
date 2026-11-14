@@ -16,7 +16,7 @@ BOUTONS = {4: "AMPCD_PB_", 3: "RIGHT_DDI_PB_", 2: "LEFT_DDI_PB_"}
 
 # Boutons possibles pour STD HDG sur la page HSI (rangee du bas). Le bon est
 # verifie a l'usage (l'option s'encadre) puis retenu dans les reglages.
-CANDIDATS_STD_HDG = (20, 19)
+CANDIDATS_STD_HDG = (19, 20)   # 19 confirme pendant ton vol du 15 novembre
 
 
 def _secondes(texte):

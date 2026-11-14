@@ -167,17 +167,20 @@ class Surveillance:
         if info and info["ok"]:
             self._ifa_fait = True
             a.b.envoyer("INS_SW", 4)
-            self._dire("Alignement terminé. Centrale sur IFA.", False)
+            self._dire("Alignement terminé. Centrale sur IFA. Avion prêt.", False)
 
     def _rwr_en_test(self):
-        """Pendant l'autotest du RWR (mise sous tension), il affiche des symboles
-        qui ne sont pas des menaces : on se tait 25 s, et pendant le demarrage."""
+        """A sa mise sous tension, le RWR fait un autotest et affiche des symboles
+        qui ne sont pas des menaces (Dog Ear et Snow Drift pendant tes vols) :
+        on se tait 25 s apres l'allumage, et pendant le demarrage."""
         maintenant = time.time()
-        allume = self.a.allume("RWR_LOWER_LT")
+        allume = bool(self.export.ecrans.get(7))
         if allume and not self._rwr_allume:
             self._rwr_muet_jusqua = maintenant + 25
         self._rwr_allume = allume
-        return (maintenant < self._rwr_muet_jusqua or self.a.allume("RWR_BIT_LT")
+        appui = getattr(self.a, "rwr_appui", 0)
+        return (maintenant < self._rwr_muet_jusqua or maintenant - appui < 25
+                or self.a.allume("RWR_BIT_LT")
                 or self.ex.en_cours in ("demarrage_terre", "demarrage_pa"))
 
     def _suivre_menaces(self):

@@ -89,8 +89,25 @@ class Avion:
 
     @property
     def au_sol(self):
-        # Un Hornet ne vole pas sous 50 noeuds : la vitesse suffit a trancher.
+        # poids sur les roues (train), sinon : un Hornet ne vole pas sous 50 noeuds
+        wow = [self.b.lire(i) for i in ("EXT_WOW_NOSE", "EXT_WOW_LEFT", "EXT_WOW_RIGHT")]
+        if any(w == 1 for w in wow):
+            return True
         return self.vitesse < 50
+
+    @property
+    def immobile(self):
+        """Au sol et a l'arret. La vitesse indiquee affiche quelques noeuds a l'arret
+        (vent) : 8 noeuds pendant ton vol du 15 novembre, frein serre."""
+        return self.au_sol and (self.frein_parking or self.vitesse < 25)
+
+    @property
+    def rwr_allume(self):
+        """Vrai / Faux d'apres l'ecran du RWR (vide quand il est eteint), None si inconnu."""
+        x = getattr(self, "export", None)
+        if x is None or not x.vivant:
+            return None
+        return bool(x.ecrans.get(7))
 
     # --- configuration
     @property
@@ -112,8 +129,11 @@ class Avion:
 
     @property
     def frein_parking(self):
-        # sortie : 0 = secours, 1 = parking, 2 = relache
-        return self.b.lire("EMERGENCY_PARKING_BRAKE_ROTATE") == 1
+        # Poignee tiree (PULL = 1) et tournee (ROTATE = 2) : c'est ce que montrait
+        # ton cockpit frein serre (marques du 15 nov.). L'etiquette DCS-BIOS
+        # "2 = release" est trompeuse : l'entree 2 serre, l'entree 1 relache.
+        return (self.b.lire("EMERGENCY_PARKING_BRAKE_ROTATE") == 2
+                and self.b.lire("EMERGENCY_PARKING_BRAKE_PULL") == 1)
 
     @property
     def arme(self):

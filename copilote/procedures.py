@@ -75,6 +75,8 @@ class Appui:
         r.b.envoyer(self.ident, 1)
         r.attendre(self.duree)
         r.b.envoyer(self.ident, 0)
+        if self.ident == "RWR_POWER_BTN":
+            r.a.rwr_appui = time.time()
         r.attendre(0.25)
 
 
@@ -359,7 +361,7 @@ def _demarrage(porte_avions):
         Regle("RADAR_SW", "OPR"),
         Regle("OBOGS_SW", 1),
         Regle("FLIR_SW", "STBY"),
-        Si(lambda a: not a.allume("RWR_LOWER_LT"), [Appui("RWR_POWER_BTN")]),
+        Appui("RWR_POWER_BTN"),          # RWR eteint apres un demarrage a froid
         Regle("CMSD_DISPENSE_SW", "ON"),
         Regle("ECM_MODE_SW", "STBY"),
         Appelle(_hmd, "casque HMD"),
@@ -380,7 +382,7 @@ def _demarrage(porte_avions):
 
 ARRET = [
     AU_SOL,
-    Exige(lambda a: a.vitesse < 5, "Négatif. Avion en mouvement."),
+    Exige(lambda a: a.immobile, "Négatif. Avion en mouvement."),
     Dit("Séquence d'arrêt engagée."),
     Regle("MASTER_ARM_SW", "SAFE"),
     Regle("EJECTION_SEAT_ARMED", "SAFE"),
@@ -455,9 +457,9 @@ APRES_DECOLLAGE = [
 ]
 
 FENCE_IN = [
-        Regle("MASTER_ARM_SW", "ARM"),
+    Regle("MASTER_ARM_SW", "ARM"),
     Regle("RADAR_SW", "OPR"),
-    Si(lambda a: not a.allume("RWR_LOWER_LT"), [Appui("RWR_POWER_BTN")]),
+    Si(lambda a: a.rwr_allume is False and not a.au_sol, [Appui("RWR_POWER_BTN")]),
     Regle("CMSD_DISPENSE_SW", "ON"),
     Regle("ECM_MODE_SW", "REC"),
     Regle("IR_COOL_SW", "NORM"),

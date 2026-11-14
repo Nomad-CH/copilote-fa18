@@ -1,7 +1,7 @@
-**Version 0.7.0**
+**Version 0.7.1** (corrections après ton vol du 15 novembre)
 
-- Voix : style militaire, phrases sobres, sans humour, débit un peu plus rapide.
-- Alignement INS rapide : le copilote encadre STD HDG sur la page HSI (alignement en ~90 s), vérifie que ça a pris et retient le bon bouton. À « QUAL OK », il passe tout seul la centrale en IFA.
-- RWR : plus de fausses alertes pendant l'autotest du RWR au démarrage.
-- Nouvelles touches (page VOL) : MENU RADIO (ta touche DCS, lue dans tes réglages) et DEMANDE RAVITO (séquence réglable avec le bouton RADIO RAVITO de la fenêtre).
-- Envoi des diagnostics à Claude sur un dépôt GitHub privé (bouton ENVOI À CLAUDE), automatiquement après chaque vol.
+- Frein de parking : la touche fait maintenant les deux temps (tirer puis tourner ; tourner puis repousser) et vérifie le résultat.
+- Arrêt avion : n'est plus refusé à l'arrêt (la vitesse indiquée affiche quelques nœuds avec le vent).
+- Alignement : « Avion prêt. » annoncé à QUAL OK. Bouton STD HDG 19 essayé en premier.
+- RWR : le copilote ne coupe plus le RWR par erreur au Fence in ; silence pendant l'autotest après chaque mise sous tension.
+- DEMANDE RAVITO : au sol, équipe au sol → réarmer et refaire le plein (menu radio, F8, F1). En vol : séquence ravitailleur réglable.

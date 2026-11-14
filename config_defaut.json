@@ -25,5 +25,6 @@
   "radio_ravito": "",
   "diag_depot": "",
   "diag_cle": "",
-  "envoi_auto": true
+  "envoi_auto": true,
+  "radio_sol": "F8 F1"
 }

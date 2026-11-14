@@ -35,14 +35,16 @@ class FauxHornet:
         self.int("CANOPY_SW", 1)
         self.int("EJECTION_SEAT_ARMED", 1)
         self.int("SEL_JETT_KNOB", 1)
-        self.int("EMERGENCY_PARKING_BRAKE_ROTATE", 1)
+        self.int("EMERGENCY_PARKING_BRAKE_ROTATE", 2)
+        self.int("EMERGENCY_PARKING_BRAKE_PULL", 1)
         self.int("STROBE_SW", 1)
         if en_vol:
             self.rpm = {"L": 85.0, "R": 85.0}
             self.gaz_idle = {"L": True, "R": True}
             self.train, self.verriere = 0.0, 0.0
             for i, v in (("GEAR_LEVER", 1), ("BATTERY_SW", 2), ("IAS_US_INT", 320),
-                         ("ALT_MSL_FT", 15000), ("EMERGENCY_PARKING_BRAKE_ROTATE", 2),
+                         ("ALT_MSL_FT", 15000), ("EMERGENCY_PARKING_BRAKE_ROTATE", 1),
+                         ("EMERGENCY_PARKING_BRAKE_PULL", 0),
                          ("EJECTION_SEAT_ARMED", 0), ("RADAR_SW", 2), ("INS_SW", 4)):
                 self.int(i, v)
 
@@ -74,7 +76,7 @@ class FauxHornet:
                 self.bingo += 100
             return
         if ident == "EMERGENCY_PARKING_BRAKE_ROTATE":
-            self.int(ident, 1 if v == 2 else 2)   # entree 2 = serrer -> sortie 1
+            self.int(ident, 2 if v == 2 else 1)   # entree 2 = serrer -> sortie 2
             return
         if ident == "RWR_POWER_BTN":
             if v == 1:

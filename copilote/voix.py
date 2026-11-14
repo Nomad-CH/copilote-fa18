@@ -436,7 +436,9 @@ def phrases_connues():
             "Master caution.",
             *__import__("copilote.app", fromlist=["ACCUEILS"]).ACCUEILS,
             "Procédure déjà en cours.",
-            "Procédure interrompue."]
+            "Procédure interrompue.", "Alignement terminé. Centrale sur IFA. Avion prêt.",
+            "Alignement rapide engagé.", "Frein de parking serré.", "Frein de parking relâché.",
+            "Demande réarmement et plein.", "Demande de ravitaillement."]
     # les plus urgentes d'abord
     out.sort(key=lambda p: (not p.endswith("!"), len(p)))
     vus, uniques = set(), []
