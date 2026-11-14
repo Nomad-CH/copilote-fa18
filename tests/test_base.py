@@ -69,6 +69,23 @@ class Bases(unittest.TestCase):
         from copilote.voix import phrases_connues
         self.assertGreater(len(phrases_connues()), 100)
 
+    def test_alignement(self):
+        from copilote import alignement
+
+        class X:
+            ecrans = {4: "\x1fAlignType\nGRND\n\x1fAlignQual\nQUAL: 0.5   OK\n"
+                         "\x1fAlignTime\nTIME: 1:36\n\x1fSTD HDG_1__id:24\nSTD HDG\n"}
+        info = alignement.lire(X)
+        self.assertTrue(info["ok"])
+        self.assertEqual(info["qual"], 0.5)
+        self.assertEqual(info["temps"], 96)
+        self.assertTrue(info["std_hdg_visible"])
+
+    def test_clavier_ponctuation(self):
+        from copilote import clavier
+        self.assertTrue(clavier.connue("]"))
+        self.assertTrue(clavier.connue("RSHIFT+HOME"))
+
     def test_import_fenetre(self):
         import copilote.interface  # noqa: F401
 

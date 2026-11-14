@@ -237,11 +237,49 @@ def scenario_menaces(port=7790, stop=None):
         time.sleep(0.1)
 
 
+def _page_hsi(qual_txt, temps, std_encadre):
+    t = "\x1fHSI_Main_Root\n\n\x1fAlignType\nGRND\n\x1fAlignQual\n" + qual_txt + "\n"
+    t += f"\x1fAlignTime\nTIME: {temps // 60}:{temps % 60:02d}\n"
+    t += "\x1fSTD HDG_1__id:24\nSTD HDG\n"
+    if std_encadre:
+        t += "\x1fSTD HDG_1_box__id:25\n\n"
+    return t
+
+
+def scenario_alignement(hornet, port=7790, stop=None, bouton_std_hdg="AMPCD_PB_20"):
+    """Imite la page HSI pendant l'alignement (comme pendant ton vol du 14 nov.)."""
+    import json
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    debut = rapide = None
+    while not (stop and stop.is_set()):
+        with hornet.verrou:
+            ins = hornet.lire("INS_SW")
+            appuye = any(c == (bouton_std_hdg, "1") for c in hornet.recu)
+        if ins in (1, 2):
+            debut = debut or time.time()
+            if appuye and rapide is None:
+                rapide = time.time()
+            t = int(time.time() - (rapide or debut))
+            if rapide:
+                qual = max(0.5, 99.0 - 12 * t)
+            else:
+                qual = None if t < 8 else max(0.5, 99.0 - 0.2 * (t - 8))
+            texte = "QUAL:NO ATT" if qual is None else (
+                "QUAL: 0.5   OK" if qual <= 0.5 else f"QUAL:{qual:4.1f}")
+            page = _page_hsi(texte, t, rapide is not None)
+        else:
+            debut = rapide = None
+            page = "\x1fHSI_Main_Root\n\n"
+        s.sendto(json.dumps({"k": "ecran", "i": 4, "txt": page}).encode(), ("127.0.0.1", port))
+        time.sleep(0.5)
+
+
 def lancer(dossier_json, stop):
     """Demarre la demo en arriere-plan : avion au sol, menaces en boucle."""
     hornet = FauxHornet(dossier_json, False)
     threading.Thread(target=servir, args=(hornet, 7778, stop), daemon=True).start()
     threading.Thread(target=scenario_menaces, args=(7790, stop), daemon=True).start()
+    threading.Thread(target=scenario_alignement, args=(hornet, 7790, stop), daemon=True).start()
     return hornet
 
 

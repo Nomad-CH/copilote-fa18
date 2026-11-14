@@ -60,8 +60,9 @@ attention, rouge = danger. Les touches dangereuses demandent un second appui.
 
 | Touche | Ce qu'il fait |
 |---|---|
-| Démarrage terre / porte-avions | Batterie, APU, moteurs (manettes au ralenti au clavier, vérifiées au régime), écrans, verrière, INS, radar, OBOGS, RWR, leurres, FCS reset, volets, trim, feux, BINGO, siège |
-| INS IFA | Passe la centrale de GND/CV sur IFA quand la page HSI affiche QUAL OK |
+| Démarrage terre / porte-avions | Batterie, APU, moteurs (manettes au ralenti au clavier, vérifiées au régime), écrans, verrière, INS avec alignement rapide STD HDG, radar, OBOGS, RWR, leurres, FCS reset, volets, trim, feux, BINGO, siège |
+| Menu radio / Demande ravito | Ouvre le menu radio de DCS ; enchaîne la séquence de ravitaillement réglée dans la fenêtre (bouton RADIO RAVITO) |
+| INS IFA | Passe la centrale de GND/CV sur IFA (fait aussi automatiquement à QUAL OK) |
 | Avant décollage / Catapulte | Ailes, volets, trim, crosse, anti-skid, feux, barre de catapultage |
 | Après décollage | Train, volets auto, phare |
 | Fence in / out | Master arm, radar, RWR, leurres, brouilleur, feux |
@@ -93,12 +94,25 @@ celle que tu préfères.
   télécharger une fois depuis la fenêtre.
 - **Windows** (Hortense) : toujours disponible, robotique ; voix de secours.
 
+## Alignement de la centrale
+
+Pendant le démarrage, le copilote encadre **STD HDG** sur la page HSI
+(alignement en ~90 s au lieu de ~8 min). Il vérifie que l'option s'est bien
+encadrée et retient le bon bouton. Dès que la page HSI affiche **QUAL OK**, il
+passe la centrale sur **IFA**. Les deux se désactivent dans `config.json`
+(`alignement_rapide`, `ins_auto_ifa`).
+
 ## Boîte noire, MARQUER et diagnostic
 
 Pendant les vols, le copilote note ce qu'il ne connaît pas encore (symboles
 RWR, pages de DDI, armes, erreurs) et les écrans pendant l'alignement INS. La
 touche **MARQUER** enregistre tout ce qu'il voit à un instant précis. Le bouton
 **Diagnostic** rassemble tout dans un zip à envoyer à Claude.
+
+**Envoi à Claude** : avec un dépôt GitHub **privé** et une clé d'accès limitée à
+ce dépôt (bouton ENVOI À CLAUDE), le diagnostic y est déposé directement, et
+automatiquement après chaque vol. Claude peut alors le lire quand tu le lui
+demandes.
 
 ## Ce qui reste à ta charge
 

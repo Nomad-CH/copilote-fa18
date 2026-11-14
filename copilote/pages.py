@@ -72,13 +72,13 @@ def page_proc(app):
         _proc(app, "fence_out", "FENCE\nOUT"),
         _proc(app, "ravitaillement", "RAVITO"),
         _proc(app, "fin_ravitaillement", "FIN\nRAVITO"),
-        VIDE,
+        Touche("MENU\nRADIO", "", BLEU, lambda: app.radio("")),
         _marquer(app),
 
         _proc(app, "atterrissage", "ATTERR.\nTERRE"),
         _proc(app, "appontage", "APPONTAGE"),
         _proc(app, "apres_atterrissage", "APRÈS\nATTERR."),
-        VIDE,
+        Touche("DEMANDE\nRAVITO", "", BLEU, app.demander_ravito),
         VIDE,
         _proc(app, "arret", "ARRÊT\nAVION", confirmer=True),
     ] + _ligne_etat(app)

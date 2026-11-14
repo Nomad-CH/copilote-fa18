@@ -14,7 +14,7 @@ import time
 import tkinter as tk
 from tkinter import messagebox
 
-from . import __version__, bios as bios_mod, deck, diagnostic, exportdcs, installation, maj, touches
+from . import __version__, bios as bios_mod, deck, diagnostic, envoi, exportdcs, installation, maj, touches
 from .app import Copilote
 from .chemins import DONNEES, PROGRAMME, RESSOURCES, ressource, sauver_config
 from .exportdcs import SYMBOLES
@@ -151,8 +151,11 @@ class Interface:
                             PALE)
         self.b_reduire = Bouton(grille, "RÉDUIRE EN BARRE", lambda: self.changer_mode("barre"),
                                 self.p_bouton)
+        self.b_ravito = Bouton(grille, "RADIO RAVITO", self.regler_ravito, self.p_bouton)
+        self.b_envoi = Bouton(grille, "ENVOI À CLAUDE", self.regler_envoi, self.p_bouton)
         for i, b in enumerate((self.b_voix, self.b_choix, self.b_touches, self.b_diag,
-                               self.b_demo, self.b_virtuel, self.b_maj, self.b_reduire)):
+                               self.b_demo, self.b_virtuel, self.b_ravito, self.b_envoi,
+                               self.b_maj, self.b_reduire)):
             b.grid(row=i // 2, column=i % 2, sticky="ew", padx=3, pady=3)
 
         bas = tk.Label(r, text="Dossier de tes données", bg=FOND, fg=GRIS, font=self.p_petit,
@@ -254,6 +257,7 @@ class Interface:
                     self._placer_barre()
             while not self._taches.empty():
                 self._taches.get_nowait()()
+            self._fin_de_vol()
             self._rafraichir()
         except Exception as ex:
             self.app.boite.erreur("fenêtre", ex)
@@ -273,6 +277,14 @@ class Interface:
         if b.connecte:
             return ("PAS UN F/A-18", AMBRE, None)
         return ("EN ATTENTE DE DCS", GRIS, None)
+
+    def _fin_de_vol(self):
+        """Quand tu quittes le Hornet : envoi automatique de la boite noire."""
+        en_f18 = self.b.en_f18
+        if getattr(self, "_etait_en_vol", False) and not en_f18 and envoi.configure(self.cfg) \
+                and self.cfg.get("envoi_auto", True) and not self.demo_stop:
+            threading.Thread(target=self._envoyer_diagnostic, daemon=True).start()
+        self._etait_en_vol = en_f18
 
     def _rafraichir(self):
         texte, couleur, menace = self._etat_texte()
@@ -347,6 +359,11 @@ class Interface:
                                 parent=self.racine)
 
     def faire_diagnostic(self):
+        if envoi.configure(self.cfg):
+            self.app.dire("Diagnostic en cours d'envoi.")
+            threading.Thread(target=self._envoyer_diagnostic, args=(True,), daemon=True).start()
+            return
+
         def travail():
             try:
                 chemin = diagnostic.creer_zip(self.app)
@@ -364,6 +381,33 @@ class Interface:
             self._taches.put(fini)
         self.app.dire("Je prépare le diagnostic.")
         threading.Thread(target=travail, daemon=True).start()
+
+    def _envoyer_diagnostic(self, signaler=False):
+        try:
+            chemin = diagnostic.creer_zip(self.app)
+            envoi.envoyer(chemin, self.cfg)
+            self.app.dire("Diagnostic transmis.")
+        except Exception as ex:
+            self.app.dire(f"Négatif, envoi du diagnostic impossible : {ex}")
+            self.app.boite.erreur("envoi diagnostic", ex)
+
+    def regler_ravito(self):
+        from tkinter import simpledialog
+        actuelle = self.cfg.get("radio_ravito", "")
+        rep = simpledialog.askstring(
+            "Radio : demande de ravitaillement",
+            "Touches F à enchaîner après l'ouverture du menu radio de DCS,\n"
+            "dans l'ordre où tu les presses pour demander le ravitaillement.\n"
+            "Exemple : F5 F1 F1   (laisser vide = ouvrir seulement le menu)",
+            initialvalue=actuelle, parent=self.racine)
+        if rep is None:
+            return
+        self.cfg["radio_ravito"] = " ".join(rep.upper().replace(",", " ").split())
+        sauver_config(self.cfg)
+        self.app.dire("Séquence ravitaillement enregistrée.")
+
+    def regler_envoi(self):
+        ReglageEnvoi(self)
 
     def basculer_demo(self):
         from . import demo
@@ -523,7 +567,7 @@ class ChoixVoix:
         ui.app.voix = self.V.Voix.depuis_config(ui.cfg)
         ui.app.voix.active = actif
         ui.app.voix.preparer(self.V.phrases_connues())
-        ui.app.dire(f"Voix choisie : {titre}. Ravi de faire ta connaissance.")
+        ui.app.dire(f"Voix {titre}. En ligne.")
         self.f.destroy()
 
     def telecharger(self):
@@ -537,3 +581,55 @@ class ChoixVoix:
                 self.ui._taches.put(lambda: self.l_info.configure(
                     text=f"Téléchargement impossible : {erreur}"))
         threading.Thread(target=travail, daemon=True).start()
+
+
+class ReglageEnvoi:
+    """Depot prive + cle GitHub pour envoyer les diagnostics a Claude."""
+
+    def __init__(self, ui):
+        self.ui = ui
+        f = self.f = tk.Toplevel(ui.racine)
+        f.title("Envoi des diagnostics à Claude")
+        f.configure(bg=FOND)
+        f.transient(ui.racine)
+        tk.Label(f, text="ENVOI DES DIAGNOSTICS", bg=FOND, fg=VERT, font=ui.p_titre).pack(pady=(12, 4))
+        tk.Label(f, text="Dépôt GitHub PRIVÉ, puis clé d'accès limitée à ce dépôt.\n"
+                 "La clé reste sur ce PC.", bg=FOND, fg=PALE, font=ui.p_petit,
+                 justify="center").pack(pady=(0, 8))
+        self.v_depot = tk.StringVar(value=ui.cfg.get("diag_depot") or "Nomad-CH/copilote-fa18-diagnostics")
+        self.v_cle = tk.StringVar(value=ui.cfg.get("diag_cle", ""))
+        self.v_auto = tk.BooleanVar(value=ui.cfg.get("envoi_auto", True))
+        for texte, var, cache in (("Dépôt", self.v_depot, False), ("Clé", self.v_cle, True)):
+            ligne = tk.Frame(f, bg=FOND)
+            ligne.pack(fill="x", padx=14, pady=3)
+            tk.Label(ligne, text=texte, bg=FOND, fg=PALE, font=ui.p_texte, width=7,
+                     anchor="w").pack(side="left")
+            tk.Entry(ligne, textvariable=var, show="•" if cache else "", width=44, bg=PANNEAU,
+                     fg=VERT, insertbackground=VERT, relief="flat", font=ui.p_texte,
+                     highlightthickness=1, highlightbackground=LIGNE).pack(side="left", fill="x")
+        tk.Checkbutton(f, text="Envoyer automatiquement après chaque vol", variable=self.v_auto,
+                       bg=FOND, fg=PALE, selectcolor=PANNEAU, activebackground=FOND,
+                       activeforeground=VERT, font=ui.p_petit).pack(pady=6)
+        self.l_info = tk.Label(f, text="", bg=FOND, fg=AMBRE, font=ui.p_petit, wraplength=420)
+        self.l_info.pack(pady=4)
+        boutons = tk.Frame(f, bg=FOND)
+        boutons.pack(pady=(4, 14))
+        Bouton(boutons, "TESTER", self.tester, ui.p_bouton).pack(side="left", padx=4)
+        Bouton(boutons, "ENREGISTRER", self.enregistrer, ui.p_bouton).pack(side="left", padx=4)
+
+    def tester(self):
+        self.l_info.configure(text="Test en cours...", fg=PALE)
+
+        def travail():
+            ok, msg = envoi.tester(self.v_depot.get().strip(), self.v_cle.get().strip())
+            self.ui._taches.put(lambda: self.l_info.configure(text=msg, fg=VERT if ok else AMBRE))
+        threading.Thread(target=travail, daemon=True).start()
+
+    def enregistrer(self):
+        cfg = self.ui.cfg
+        cfg["diag_depot"] = self.v_depot.get().strip()
+        cfg["diag_cle"] = self.v_cle.get().strip()
+        cfg["envoi_auto"] = bool(self.v_auto.get())
+        sauver_config(cfg)
+        self.ui.app.dire("Envoi des diagnostics configuré.")
+        self.f.destroy()

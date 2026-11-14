@@ -1,21 +1,29 @@
 {
   "voix": true,
-  "voix_debit": 1,
+  "voix_debit": 2,
   "voix_moteur": "windows",
   "voix_nom": "",
   "luminosite": 70,
   "bingo_lbs": 3000,
   "casque_hmd": true,
+  "alignement_rapide": true,
+  "ins_auto_ifa": true,
+  "pb_std_hdg": null,
   "clavier_auto": true,
   "touches": {
     "gaz_droit_idle": "RSHIFT+HOME",
     "gaz_gauche_idle": "RALT+HOME",
     "gaz_droit_off": "RSHIFT+END",
-    "gaz_gauche_off": "RALT+END"
+    "gaz_gauche_off": "RALT+END",
+    "menu_radio": "\\"
   },
   "gardes_sol_vol": true,
   "export_port": 7790,
   "dcs_bios_hote": "127.0.0.1",
   "dcs_bios_port": 7778,
-  "dcs_bios_json": ""
+  "dcs_bios_json": "",
+  "radio_ravito": "",
+  "diag_depot": "",
+  "diag_cle": "",
+  "envoi_auto": true
 }

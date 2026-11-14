@@ -32,41 +32,22 @@ def _train_oublie(a):
 
 
 ALERTES = [
-    ("feu_g", lambda a: a.allume("FIRE_LEFT_LT"),
-     ["Feu moteur gauche ! Feu moteur gauche !"], True),
-    ("feu_d", lambda a: a.allume("FIRE_RIGHT_LT"),
-     ["Feu moteur droit ! Feu moteur droit !"], True),
-    ("feu_apu", lambda a: a.allume("FIRE_APU_LT"),
-     ["Feu APU !"], True),
-    ("sam", lambda a: a.allume("RH_ADV_SAM"),
-     ["Missile sol-air ! Défends !", "Départ missile sol-air !"], True),
-    ("ai", lambda a: a.allume("RH_ADV_AI"),
-     ["Radar chasseur sur nous.", "Un chasseur nous éclaire."], True),
-    ("aaa", lambda a: a.allume("RH_ADV_AAA"),
-     ["Artillerie antiaérienne."], False),
-    ("bingo", _bingo,
-     ["Bingo carburant. Il serait temps de rentrer.",
-      "Bingo. On a de quoi rentrer, pas de quoi faire du tourisme.",
-      "Bingo. Je ne pousse pas, moi."], True),
-    ("fuel_lo", lambda a: a.allume("CLIP_FUEL_LO_LT"),
-     ["Carburant bas ! Pose-toi ou trouve un ravitailleur."], True),
-    ("train_oublie", _train_oublie,
-     ["Volets sortis mais train rentré. Tu comptes atterrir sur le ventre ?",
-      "Petit détail : le train. Les roues, ça aide beaucoup.",
-      "Le train ! Le train n'est pas sorti."], True),
+    ("feu_g", lambda a: a.allume("FIRE_LEFT_LT"), ["Feu moteur gauche ! Feu moteur gauche !"], True),
+    ("feu_d", lambda a: a.allume("FIRE_RIGHT_LT"), ["Feu moteur droit ! Feu moteur droit !"], True),
+    ("feu_apu", lambda a: a.allume("FIRE_APU_LT"), ["Feu APU ! Feu APU !"], True),
+    ("sam", lambda a: a.allume("RH_ADV_SAM"), ["Missile sol-air ! Défends !"], True),
+    ("ai", lambda a: a.allume("RH_ADV_AI"), ["Radar chasseur. Accroché."], True),
+    ("aaa", lambda a: a.allume("RH_ADV_AAA"), ["Artillerie antiaérienne."], False),
+    ("bingo", _bingo, ["Bingo. Bingo."], True),
+    ("fuel_lo", lambda a: a.allume("CLIP_FUEL_LO_LT"), ["Carburant bas ! Carburant bas !"], True),
+    ("train_oublie", _train_oublie, ["Train ! Train non sorti !"], True),
     ("train_vitesse", lambda a: not a.au_sol and a.levier_train_bas and a.vitesse > 260,
-     ["Train sorti au-dessus de 250 nœuds. Rentre-le ou ralentis."], False),
-    ("arme_sol", lambda a: a.au_sol and a.arme and a.rpm_d > 50,
-     ["Master arm actif au sol. Attention où tu pointes ça.",
-      "Master arm actif au sol. Le personnel au sol te remercie d'avance de faire attention."], False),
-    ("facteur_g", lambda a: a.g >= 8.0,
-     ["Plus de huit G. Mes circuits apprécient moyennement.",
-      "Huit G. Je t'entends grogner d'ici.",
-      "Huit G. La cellule te remercie."], False),
+     ["Survitesse train. 250 nœuds maximum."], False),
+    ("arme_sol", lambda a: a.au_sol and a.arme and a.rpm_d > 50, ["Master arm actif au sol."], False),
+    ("facteur_g", lambda a: a.g >= 8.0, ["Huit G."], False),
     ("crosse_sol", lambda a: (not a.au_sol and a.est("HOOK_LEVER", "DOWN")
                               and a.est("HOOK_BYPASS_SW", "FIELD") and a.levier_train_bas),
-     ["Crosse sortie pour un terrain. C'est voulu ?",
-      "Crosse sortie. Il n'y a pas de brins sur cette piste, je préfère le dire."], False),
+     ["Crosse sortie, hook bypass sur terrain. Vérifie."], False),
 ]
 
 
@@ -89,7 +70,7 @@ def phrase_tir(nom):
         return "Bombe larguée."
     if "FUEL" in n or "FPU" in n:
         return None   # bidon largue : pas d'annonce
-    return f"{nom} parti."
+    return f"{nom}, tir."
 
 
 class Surveillance:
@@ -108,6 +89,9 @@ class Surveillance:
         self._derniere_menace_nommee = 0.0
         self._stations = None
         self._leurres_bas = False
+        self._ifa_fait = False
+        self._rwr_muet_jusqua = 0.0
+        self._rwr_allume = False
 
     def tick(self):
         a = self.a
@@ -128,6 +112,7 @@ class Surveillance:
             return
 
         if self.export is not None and self.export.vivant:
+            self._suivre_alignement()
             self._suivre_menaces()
             self._suivre_armes()
             self._suivre_leurres()
@@ -161,15 +146,45 @@ class Surveillance:
         mc = a.allume("MASTER_CAUTION_LT")
         if not calme:
             if nouvelles:
-                self._dire("Alarme : " + ", ".join(VOYANTS_PANNE[i] for i in sorted(nouvelles)) + ".", False)
+                self._dire("Alarme. " + ", ".join(VOYANTS_PANNE[i] for i in sorted(nouvelles)) + ".", False)
             elif mc and not self._mc:
-                self._dire("Master caution. Regarde le DDI gauche.", False)
+                self._dire("Master caution.", False)
         self._mc = mc
         self.actives = actives + sorted(pannes)
 
     # ------------------------------------------------- donnees de l'export
+    def _suivre_alignement(self):
+        """A QUAL OK, passe la centrale de GND/CV sur IFA (checklist DimOn)."""
+        a = self.a
+        ins = a.b.lire("INS_SW")
+        if ins not in (1, 2):
+            self._ifa_fait = False
+            return
+        if self._ifa_fait or not a.au_sol or not self.ex.cfg.get("ins_auto_ifa", True):
+            return
+        from . import alignement
+        info = alignement.lire(self.export)
+        if info and info["ok"]:
+            self._ifa_fait = True
+            a.b.envoyer("INS_SW", 4)
+            self._dire("Alignement terminé. Centrale sur IFA.", False)
+
+    def _rwr_en_test(self):
+        """Pendant l'autotest du RWR (mise sous tension), il affiche des symboles
+        qui ne sont pas des menaces : on se tait 25 s, et pendant le demarrage."""
+        maintenant = time.time()
+        allume = self.a.allume("RWR_LOWER_LT")
+        if allume and not self._rwr_allume:
+            self._rwr_muet_jusqua = maintenant + 25
+        self._rwr_allume = allume
+        return (maintenant < self._rwr_muet_jusqua or self.a.allume("RWR_BIT_LT")
+                or self.ex.en_cours in ("demarrage_terre", "demarrage_pa"))
+
     def _suivre_menaces(self):
         from .exportdcs import CONSEIL, menace, nom_menace
+        if self._rwr_en_test():
+            self.menaces = {}
+            return
         maintenant = time.time()
         vues = self.export.menaces()
         sam = self.a.allume("RH_ADV_SAM")
@@ -233,7 +248,7 @@ class Surveillance:
         bas = min(l) <= 10
         if bas and not self._leurres_bas:
             if min(l) == 0:
-                self._dire("Plus de leurres.", False)
+                self._dire("Leurres épuisés.", False)
             else:
                 self._dire("Leurres bas.", False)
         self._leurres_bas = bas

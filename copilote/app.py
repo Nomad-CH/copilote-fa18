@@ -16,9 +16,7 @@ from .voix import Voix
 
 
 ACCUEILS = (
-    "F/A-18 détecté. Je suis en place arrière, façon de parler.",
-    "Bonjour Lucas. Hornet en ligne, et moi aussi.",
-    "Connexion établie. Prêt à faire tout le travail, comme d'habitude.",
+    "Copilote en ligne. Hornet identifié.",
 )
 
 
@@ -34,7 +32,7 @@ class Copilote:
         except Exception as ex:
             print(f"Préparation des phrases impossible : {ex}")
         self.boite = BoiteNoire(cfg.get("boite_noire_dossier") or DOSSIER_BOITE)
-        self.ex = Executeur(bios, self.a, cfg, self.dire)
+        self.ex = Executeur(bios, self.a, cfg, self.dire, export)
         self.ex.boite = self.boite
         self.surv = Surveillance(self.a, self.dire, self.ex, export, self.boite)
         self.page = "vol"
@@ -79,13 +77,13 @@ class Copilote:
         apres = x.leurres or avant
         paillettes, ir = avant[0] - apres[0], avant[1] - apres[1]
         if paillettes > 0 and ir > 0:
-            self.dire("Paillettes et leurres partis.")
+            self.dire("Paillettes et leurres.")
         elif paillettes > 0:
-            self.dire("Paillettes." if sorte == "chaff" else "Attention : ce sont des paillettes qui sont parties.")
+            self.dire("Paillettes." if sorte == "chaff" else "Paillettes larguées, pas de leurre IR.")
         elif ir > 0:
-            self.dire("Leurre." if sorte == "flare" else "Attention : c'est un leurre IR qui est parti.")
+            self.dire("Leurre." if sorte == "flare" else "Leurre IR largué, pas de paillettes.")
         else:
-            self.dire("Rien n'est parti. Vérifie l'interrupteur DISPENSER et le programme de leurres.")
+            self.dire("Négatif, aucun largage. Vérifie le DISPENSER.")
             self.boite.ecrire("largage_sans_effet", sorte=sorte, leurres=avant,
                               dispenser=b.lire("CMSD_DISPENSE_SW"))
 
@@ -93,9 +91,34 @@ class Copilote:
         """action : 'suivante' (pleine -> barre -> cachee) ou 'coin'."""
         self.demandes_fenetre.put(action)
 
+    def radio(self, apres_menu=""):
+        """Ouvre le menu radio de DCS puis enchaine des touches F (ex. "F5 F1 F1")."""
+        threading.Thread(target=self._radio, args=(apres_menu,), daemon=True).start()
+
+    def _radio(self, apres_menu):
+        from . import clavier
+        menu = self.cfg.get("touches", {}).get("menu_radio", "")
+        if not menu or not clavier.combinaison(menu, maintien=0.1):
+            self.dire("Négatif. Menu radio indisponible.")
+            return
+        for touche in apres_menu.replace(",", " ").split():
+            time.sleep(0.5)
+            if not clavier.combinaison(touche, maintien=0.1):
+                self.dire(f"Négatif. Touche {touche} inconnue.")
+                return
+
+    def demander_ravito(self):
+        sequence = self.cfg.get("radio_ravito", "").strip()
+        if not sequence:
+            self.radio("")
+            self.dire("Menu radio ouvert. Séquence ravitaillement à régler dans la fenêtre.")
+            return
+        self.radio(sequence)
+        self.dire("Demande de ravitaillement.")
+
     def marquer(self):
         n = self.boite.marquer(self)
-        self.dire(f"Marque {n} enregistrée.")
+        self.dire(f"Marque {n}.")
 
     def _verifier_touches(self):
         """Refait le controle des touches a chaque entree dans le Hornet :
@@ -109,10 +132,9 @@ class Copilote:
             manquantes = [m for m in messages if "aucune touche" in m]
             if manquantes:
                 self.dire(f"{len(manquantes)} commande{'s' if len(manquantes) > 1 else ''} "
-                          "de manette sans touche clavier dans DCS. Je te demanderai "
-                          "de le faire toi-même.")
+                          "de manette sans touche clavier dans DCS. Manettes à ta charge.")
             elif nouvelles != avant:
-                self.dire("Tes touches DCS ont changé, j'ai suivi.")
+                self.dire("Touches DCS modifiées. Pris en compte.")
 
     # ----------------------------------------------------------- actions
     def regler(self, ident, valeur):

@@ -23,6 +23,11 @@ TOUCHES = {
     "NUMENTER": (0x1C, True), "NUM*": (0x37, False), "NUM-": (0x4A, False),
     "NUM+": (0x4E, False), "NUM/": (0x35, True), "NUM.": (0x53, False),
 }
+# ponctuation, par position physique (noms DCS = clavier QWERTY americain)
+TOUCHES.update({"`": (0x29, False), "-": (0x0C, False), "=": (0x0D, False),
+                "[": (0x1A, False), "]": (0x1B, False), "\\": (0x2B, False),
+                ";": (0x27, False), "'": (0x28, False), ",": (0x33, False),
+                ".": (0x34, False), "/": (0x35, False)})
 for _i, _c in enumerate("1234567890"):
     TOUCHES[_c] = (0x02 + _i, False)
 for _rang, _lettres in ((0x10, "QWERTYUIOP"), (0x1E, "ASDFGHJKL"), (0x2C, "ZXCVBNM")):

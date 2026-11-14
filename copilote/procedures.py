@@ -233,6 +233,62 @@ def _fermer_verriere(r):
         r.non_confirmes.append("fermeture verriere")
 
 
+def _alignement_rapide(r):
+    """Encadre STD HDG sur la page HSI : alignement en ~90 s au lieu de ~8 min.
+    Le bouton est verifie (l'option s'encadre ou le chrono repart) et retenu."""
+    from . import alignement
+    from .chemins import sauver_config
+    if not r.cfg.get("alignement_rapide", True) or r.b.lire("INS_SW") not in (1, 2):
+        return
+    info = None
+    fin = r.horloge() + 45
+    while r.horloge() < fin:
+        info = alignement.lire(r.export)
+        if info and info["qual"] is not None:
+            break
+        r.attendre(0.5)
+    if not info or info["qual"] is None:
+        r.non_confirmes.append("alignement rapide (page HSI introuvable)")
+        return
+    if info["std_hdg_encadre"]:
+        return
+    if not info["std_hdg_visible"]:
+        r.non_confirmes.append("STD HDG absent de la page HSI")
+        return
+    connu = r.cfg.get("pb_std_hdg")
+    candidats = [connu] if connu else list(alignement.CANDIDATS_STD_HDG)
+    for pb in candidats:
+        avant = alignement.lire(r.export) or info
+        bouton = f"{alignement.BOUTONS[avant['ecran']]}{pb:02d}"
+        r.b.envoyer(bouton, 1)
+        r.attendre(0.2)
+        r.b.envoyer(bouton, 0)
+        limite = r.horloge() + 3
+        while r.horloge() < limite:
+            r.attendre(0.5)
+            apres = alignement.lire(r.export)
+            if apres is None:
+                # la page a change : mauvais bouton, on s'arrete la
+                if getattr(r, "boite", None) is not None:
+                    r.boite.ecrire("std_hdg_echec", bouton=bouton, raison="page quittée")
+                r.dire("Alignement rapide impossible. STD HDG à ta charge.")
+                return
+            relance = (apres["temps"] is not None and avant["temps"] is not None
+                       and apres["temps"] + 5 < avant["temps"])
+            if apres["std_hdg_encadre"] or relance:
+                if r.cfg.get("pb_std_hdg") != pb:
+                    r.cfg["pb_std_hdg"] = pb
+                    try:
+                        sauver_config(r.cfg)
+                    except OSError:
+                        pass
+                r.dire("Alignement rapide engagé.")
+                return
+        if getattr(r, "boite", None) is not None:
+            r.boite.ecrire("std_hdg_sans_effet", bouton=bouton)
+    r.dire("Alignement rapide impossible. STD HDG à ta charge.")
+
+
 def _hmd(r):
     if r.cfg.get("casque_hmd", True):
         r.b.envoyer("HMD_OFF_BRT", 65535)
@@ -253,11 +309,11 @@ FEUX_OFF = [
     Regle("STROBE_SW", "OFF"),
 ]
 
-AU_SOL = Exige(lambda a: a.au_sol, "Refusé : on vole. Ça, je ne le fais qu'au sol.", True)
-EN_VOL = Exige(lambda a: not a.au_sol, "Refusé : on est encore au sol. Patience.", True)
+AU_SOL = Exige(lambda a: a.au_sol, "Négatif. Procédure sol uniquement.", True)
+EN_VOL = Exige(lambda a: not a.au_sol, "Négatif. Procédure vol uniquement.", True)
 
 DEPLIER_AILES = Si(lambda a: a.ailes_repliees, [
-    Dit("Ailes repliées. Je les déplie, c'est plus pratique pour voler."),
+    Dit("Ailes repliées. Déploiement."),
     Regle("WING_FOLD_PULL", 1),
     Regle("WING_FOLD_ROTATE", "SPREAD"),
     Attend(lambda a: not a.ailes_repliees, 25, "ailes dépliées", bloquant=False),
@@ -269,10 +325,8 @@ def _demarrage(porte_avions):
     return [
         AU_SOL,
         Exige(lambda a: a.rpm_g < 10 and a.rpm_d < 10,
-              "Les moteurs tournent déjà. Démarrage annulé."),
-        Dit("Démarrage. Garde les mains dans les poches, je m'en occupe.",
-            "Démarrage à froid. Café, ceinture, et laisse faire le professionnel.",
-            "On réveille la bête. Ne touche à rien, surtout pas au gros bouton rouge."),
+              "Négatif. Moteurs déjà en route."),
+        Dit("Séquence de démarrage engagée."),
         Regle("BATTERY_SW", "ON"),
         Regle("L_GEN_SW", 1),
         Regle("R_GEN_SW", 1),
@@ -280,10 +334,10 @@ def _demarrage(porte_avions):
         Regle("APU_CONTROL_SW", 1),
         Attend(lambda a: a.allume("APU_READY_LT"), 60, "APU prêt"),
         # --- moteur droit
-        Dit("APU prêt. On lance le moteur droit.", "APU en ligne. Moteur droit, c'est parti."),
+        Dit("APU prêt. Démarrage moteur droit."),
         Regle("ENGINE_CRANK_SW", "DROITE", verifie=False),
         Attend(lambda a: a.rpm_d >= 18, 45, "moteur droit à 18 %"),
-        Touche("gaz_droit_idle", "À toi : manette droite sur IDLE (Maj droite + Origine).",
+        Touche("gaz_droit_idle", "Manette droite sur IDLE, à toi.",
               reussite=lambda a: a.rpm_d >= 30, delai=10),
         Attend(lambda a: a.rpm_d >= 60, 90, "moteur droit au ralenti"),
         # --- ecrans
@@ -292,15 +346,16 @@ def _demarrage(porte_avions):
         Regle("AMPCD_BRT_CTL", 65535),
         Regle("HUD_SYM_BRT", 65535),
         # --- moteur gauche
-        Dit("Moteur droit stable. Au tour du gauche.", "Un sur deux. Le gauche, maintenant."),
+        Dit("Moteur droit stabilisé. Démarrage moteur gauche."),
         Regle("ENGINE_CRANK_SW", "GAUCHE", verifie=False),
         Attend(lambda a: a.rpm_g >= 18, 45, "moteur gauche à 18 %"),
-        Touche("gaz_gauche_idle", "À toi : manette gauche sur IDLE (Alt droite + Origine).",
+        Touche("gaz_gauche_idle", "Manette gauche sur IDLE, à toi.",
               reussite=lambda a: a.rpm_g >= 30, delai=10),
         Attend(lambda a: a.rpm_g >= 60, 90, "moteur gauche au ralenti"),
         # --- systemes
         Appelle(_fermer_verriere, "fermeture verrière"),
         Regle("INS_SW", "CV" if porte_avions else "GND"),
+        Appelle(_alignement_rapide, "alignement rapide STD HDG"),
         Regle("RADAR_SW", "OPR"),
         Regle("OBOGS_SW", 1),
         Regle("FLIR_SW", "STBY"),
@@ -318,15 +373,15 @@ def _demarrage(porte_avions):
         *FEUX_ON,
         Regle("EJECTION_SEAT_ARMED", "ARMED"),
         Appelle(_regler_bingo, "réglage BINGO"),
-        Dit("Deux moteurs, zéro panne, aucun mérite de ta part. La centrale s'aligne : "
-            "quand la page HSI affiche QUAL OK, touche INS IFA. Le test FCS, c'est pour toi."),
+        Dit("Deux moteurs au ralenti. Centrale en alignement, passage IFA automatique "
+            "à QUAL OK. Test FCS à ta charge."),
     ]
 
 
 ARRET = [
     AU_SOL,
-    Exige(lambda a: a.vitesse < 5, "Refusé : l'avion roule encore."),
-    Dit("On coupe tout. Retour au hangar.", "Arrêt de l'avion. Les mécanos vont encore se plaindre des freins."),
+    Exige(lambda a: a.vitesse < 5, "Négatif. Avion en mouvement."),
+    Dit("Séquence d'arrêt engagée."),
     Regle("MASTER_ARM_SW", "SAFE"),
     Regle("EJECTION_SEAT_ARMED", "SAFE"),
     Regle("FLAP_SW", "AUTO"),
@@ -339,9 +394,9 @@ ARRET = [
     Regle("ECM_MODE_SW", "OFF"),
     Regle("OBOGS_SW", 0),
     Regle("CANOPY_SW", "OPEN", verifie=False),
-    Touche("gaz_gauche_off", "À toi : manette gauche sur OFF (Alt droite + Fin).",
+    Touche("gaz_gauche_off", "Manette gauche sur OFF, à toi.",
            reussite=lambda a: a.rpm_g < 50, delai=8),
-    Touche("gaz_droit_off", "À toi : manette droite sur OFF (Maj droite + Fin).",
+    Touche("gaz_droit_off", "Manette droite sur OFF, à toi.",
            reussite=lambda a: a.rpm_d < 50, delai=8),
     Attend(lambda a: a.rpm_g < 10 and a.rpm_d < 10, 60, "moteurs arrêtés", bloquant=False),
     Regle("LEFT_DDI_BRT_SELECT", "OFF"),
@@ -349,7 +404,7 @@ ARRET = [
     Regle("AMPCD_BRT_CTL", 0),
     Regle("HUD_SYM_BRT", 0),
     Regle("BATTERY_SW", "OFF"),
-    Dit("Avion éteint. Joli vol. Enfin, on est entiers.", "Tout est coupé. Je retourne dans ma boîte, appelle-moi pour la prochaine bêtise."),
+    Dit("Avion éteint. Fin de mission."),
 ]
 
 AVANT_DECOLLAGE = [
@@ -367,7 +422,7 @@ AVANT_DECOLLAGE = [
     Regle("MASTER_ARM_SW", "SAFE"),
     Regle("LDG_TAXI_SW", 1),
     *FEUX_ON,
-    Dit("Prêt au décollage. Le frein de parking, c'est toi qui le lâches.", "Configuration décollage. Je te laisse l'honneur de lâcher les freins."),
+    Dit("Configuration décollage terminée. Frein de parking à ta charge."),
 ]
 
 CATAPULTE = [
@@ -384,8 +439,7 @@ CATAPULTE = [
     Regle("MASTER_ARM_SW", "SAFE"),
     Regle("LDG_TAXI_SW", 0),
     Regle("LAUNCH_BAR_SW", "EXTEND"),
-    Dit("Barre sortie. Trim selon ta masse, pleins gaz, et salue le shooter. "
-        "Moi, je ferme les yeux."),
+    Dit("Barre de catapultage sortie. Trim selon la masse, à ta charge."),
 ]
 
 APRES_DECOLLAGE = [
@@ -397,12 +451,11 @@ APRES_DECOLLAGE = [
     Attend(lambda a: not any(a.allume(i) for i in (
         "FLP_LG_NOSE_GEAR_LT", "FLP_LG_LEFT_GEAR_LT", "FLP_LG_RIGHT_GEAR_LT")),
         15, "train rentré", bloquant=False),
-    Dit("Train rentré, volets auto. Avion propre.", "Train rentré. Jolie rotation, je n'ai presque pas eu peur."),
+    Dit("Train rentré, volets auto. Configuration lisse."),
 ]
 
 FENCE_IN = [
-    Dit("Fence in."),
-    Regle("MASTER_ARM_SW", "ARM"),
+        Regle("MASTER_ARM_SW", "ARM"),
     Regle("RADAR_SW", "OPR"),
     Si(lambda a: not a.allume("RWR_LOWER_LT"), [Appui("RWR_POWER_BTN")]),
     Regle("CMSD_DISPENSE_SW", "ON"),
@@ -410,20 +463,19 @@ FENCE_IN = [
     Regle("IR_COOL_SW", "NORM"),
     *FEUX_OFF,
     Regle("LDG_TAXI_SW", 0),
-    Dit("Armement actif, feux éteints. Essaie de viser les méchants.", "Master arm sur ARM, feux coupés. Rappel : les gentils sont en bleu."),
+    Dit("Fence in effectué. Master arm, feux éteints."),
 ]
 
 FENCE_OUT = [
-    Dit("Fence out."),
-    Regle("MASTER_ARM_SW", "SAFE"),
+        Regle("MASTER_ARM_SW", "SAFE"),
     Regle("LTD_R_SW", "SAFE"),
     Regle("ECM_MODE_SW", "STBY"),
     *FEUX_ON,
-    Dit("Armement sur sécurité, feux allumés. On rentre en héros, ou au moins en un seul morceau."),
+    Dit("Fence out effectué. Armement sur sécurité, feux allumés."),
 ]
 
 _TROP_VITE = Exige(lambda a: a.vitesse <= 250,
-                   "Trop rapide pour sortir le train : passe sous 250 nœuds.")
+                   "Négatif. Vitesse trop élevée pour le train : 250 nœuds maximum.")
 
 ATTERRISSAGE = [
     EN_VOL, _TROP_VITE,
@@ -436,7 +488,7 @@ ATTERRISSAGE = [
     Regle("LDG_TAXI_SW", 1),
     Regle("PROBE_SW", "RETRACT"),
     Attend(lambda a: a.train_sorti, 20, "trois vertes", bloquant=False),
-    Dit("Trois vertes, pleins volets. À toi la piste.", "Trois vertes. La piste est grande, vise le milieu."),
+    Dit("Trois vertes, pleins volets. Configuration atterrissage."),
 ]
 
 APPONTAGE = [
@@ -450,7 +502,7 @@ APPONTAGE = [
     Regle("LDG_TAXI_SW", 0),
     Regle("PROBE_SW", "RETRACT"),
     Attend(lambda a: a.train_sorti, 20, "trois vertes", bloquant=False),
-    Dit("Trois vertes, crosse sortie. Vise le brin trois.", "Trois vertes, crosse sortie. Le LSO te regarde, souris."),
+    Dit("Trois vertes, pleins volets, crosse sortie. Configuration appontage."),
 ]
 
 APRES_ATTERRISSAGE = [
@@ -461,7 +513,7 @@ APRES_ATTERRISSAGE = [
     Regle("MASTER_ARM_SW", "SAFE"),
     Regle("CMSD_DISPENSE_SW", "OFF"),
     Regle("ECM_MODE_SW", "OFF"),
-    Dit("Bien posé. Volets rentrés, crosse relevée.", "Posé. Je note un « OK » dans le carnet, par pure gentillesse."),
+    Dit("Volets rentrés, crosse relevée. Configuration roulage."),
 ]
 
 RAVITAILLEMENT = [
@@ -469,19 +521,19 @@ RAVITAILLEMENT = [
     Regle("MASTER_ARM_SW", "SAFE"),
     Regle("PROBE_SW", "EXTEND"),
     *FEUX_ON,
-    Dit("Perche sortie, armement sur sécurité. Doucement sur le panier, il n'a rien fait de mal."),
+    Dit("Perche sortie, armement sur sécurité. Prêt au ravitaillement."),
 ]
 
 FIN_RAVITAILLEMENT = [
     Regle("PROBE_SW", "RETRACT"),
-    Dit("Perche rentrée. Plein fait, pas de rayure.", "Perche rentrée."),
+    Dit("Perche rentrée."),
 ]
 
 # Checklist : une fois QUAL OK sur la page HSI, INS sur IFA (NAV si le GPS
 # est restreint). On ne touche a rien si la centrale n'est pas en alignement.
 INS_IFA = [
     Exige(lambda a: a.b.lire("INS_SW") in (POS["INS_SW"]["GND"], POS["INS_SW"]["CV"]),
-          "La centrale n'est pas en alignement : je n'y touche pas."),
+          "Négatif. Centrale pas en alignement."),
     Regle("INS_SW", "IFA"),
     Dit("Centrale sur IFA."),
 ]
@@ -492,7 +544,7 @@ AIR_AIR = [
     Regle("IR_COOL_SW", "NORM"),
     Si(lambda a: not a.allume("MASTER_MODE_AA_LT"), [Appui("MASTER_MODE_AA")]),
     Regle("CMSD_DISPENSE_SW", "ON"),
-    Dit("Mode air-air, armement actif. Chasse ouverte."),
+    Dit("Mode air-air. Armement actif."),
 ]
 
 AIR_SOL = [
@@ -500,8 +552,7 @@ AIR_SOL = [
     Si(lambda a: not a.allume("MASTER_MODE_AG_LT"), [Appui("MASTER_MODE_AG")]),
     Regle("FLIR_SW", "ON"),
     Regle("CMSD_DISPENSE_SW", "ON"),
-    Dit("Mode air-sol, armement actif. Le laser reste sur sécurité tant que tu ne "
-        "le demandes pas."),
+    Dit("Mode air-sol. Armement actif. Laser sur sécurité."),
 ]
 
 SECURITE = [
@@ -509,7 +560,7 @@ SECURITE = [
     Si(lambda a: a.allume("MASTER_MODE_AA_LT"), [Appui("MASTER_MODE_AA")]),
     Si(lambda a: a.allume("MASTER_MODE_AG_LT"), [Appui("MASTER_MODE_AG")]),
     Regle("MASTER_ARM_SW", "SAFE"),
-    Dit("Armement sur sécurité. On range les jouets."),
+    Dit("Armement sur sécurité."),
 ]
 
 PROCEDURES = {
@@ -537,8 +588,9 @@ PROCEDURES = {
 class Executeur:
     """Execute une procedure a la fois, dans son propre fil."""
 
-    def __init__(self, bios, avion, cfg, dire):
+    def __init__(self, bios, avion, cfg, dire, export=None):
         self.b, self.a, self.cfg = bios, avion, cfg
+        self.export = export
         self._dire = dire
         self.en_cours = None       # cle de la procedure en cours
         self.titre = ""
@@ -577,10 +629,10 @@ class Executeur:
     def lancer(self, cle):
         with self._verrou:
             if self.en_cours:
-                self.dire("Une procédure est déjà en cours. STOP pour l'interrompre.")
+                self.dire("Procédure déjà en cours.")
                 return False
             if not self.b.en_f18:
-                self.dire("Pas de F/A-18 en ligne.")
+                self.dire("Négatif. Pas de Hornet en ligne.")
                 return False
             self.en_cours = cle
         self.titre, etapes = PROCEDURES[cle]
@@ -602,7 +654,7 @@ class Executeur:
                 self.executer(e)
             if self.non_confirmes:
                 n = len(self.non_confirmes)
-                self.dire(f"{self.titre} : terminé, mais {n} action"
+                self.dire(f"{self.titre} terminé. {n} point"
                           f"{'s' if n > 1 else ''} à vérifier : "
                           + ", ".join(self.non_confirmes[:4]))
         except Abandon as ex:

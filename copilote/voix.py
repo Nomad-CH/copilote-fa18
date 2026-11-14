@@ -56,7 +56,7 @@ CANDIDATS = [
 ]
 
 PHRASE_ESSAI = ("SA-8, nous accroche ! Paillettes ! Fox trois. "
-                "Trois vertes, crosse sortie. Le LSO te regarde, souris.")
+                "Trois vertes, pleins volets, crosse sortie. Configuration appontage.")
 
 PIPER_EXE = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip"
 _HF = "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/"
@@ -432,10 +432,10 @@ def phrases_connues():
         out += [f"{nom} au RWR.", (f"{nom}, nous accroche ! " + CONSEIL.get(conseil, "")).strip(),
                 f"{nom} perdu."]
     out += ["Fox un.", "Fox deux.", "Fox trois.", "Magnum.", "Rifle.", "Bruiser.",
-            "Bombe larguée.", "Leurres bas.", "Plus de leurres.", "Paillettes.", "Leurre.",
-            "Master caution. Regarde le DDI gauche.",
+            "Bombe larguée.", "Leurres bas.", "Leurres épuisés.", "Paillettes.", "Leurre.",
+            "Master caution.",
             *__import__("copilote.app", fromlist=["ACCUEILS"]).ACCUEILS,
-            "Une procédure est déjà en cours. STOP pour l'interrompre.",
+            "Procédure déjà en cours.",
             "Procédure interrompue."]
     # les plus urgentes d'abord
     out.sort(key=lambda p: (not p.endswith("!"), len(p)))

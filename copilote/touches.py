@@ -18,6 +18,8 @@ BESOINS = {
     "gaz_droit_idle": [("throttle", "right", "idle"), ("engine", "start", "right")],
     "gaz_gauche_off": [("throttle", "left", "off"), ("engine", "stop", "left")],
     "gaz_droit_off": [("throttle", "right", "off"), ("engine", "stop", "right")],
+    # menu radio (le nom est traduit dans tes reglages DCS en francais)
+    "menu_radio": [("communication", "menu"), ("menu", "communications")],
 }
 
 NOMS = {
@@ -25,6 +27,7 @@ NOMS = {
     "gaz_droit_idle": "Manette droite sur IDLE",
     "gaz_gauche_off": "Manette gauche sur OFF",
     "gaz_droit_off": "Manette droite sur OFF",
+    "menu_radio": "Menu radio",
 }
 
 # Noms DCS des touches -> noms utilises par copilote.clavier
@@ -312,7 +315,9 @@ def analyser(fichier_defaut=None, fichiers_diff=None):
     for besoin, variantes in BESOINS.items():
         choix = None
         for mots in variantes:
-            candidats = sorted((n for n in liaisons if _correspond(n, mots)), key=len)
+            # tes reglages (souvent au nom traduit) passent avant les noms par defaut
+            candidats = sorted((n for n in liaisons if _correspond(n, mots)),
+                               key=lambda n: (n not in modifiees, len(n)))
             # prefere une commande qui a une touche, et la plus precise
             avec = [n for n in candidats if liaisons[n]]
             if avec or candidats:

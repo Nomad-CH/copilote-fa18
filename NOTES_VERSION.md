@@ -1,7 +1,7 @@
-**Première version installable du copilote.**
+**Version 0.7.0**
 
-- Application avec fenêtre au style cockpit, réductible en barre (touche FENÊTRE au Stream Deck).
-- Installation de la liaison avec DCS depuis la fenêtre, mises à jour automatiques.
-- Choix de la voix (Edge, Piper, Windows) avec écoute.
-- Étape 1 (démarrage) : manettes au ralenti vérifiées au régime avec 3 essais, prononciation corrigée (S.A. 8, F.A. 18…), plus d'humour, capture des écrans pendant l'alignement INS pour la suite.
-- Corrections : feux extérieurs, leurres, pause DCS, INS IFA protégé.
+- Voix : style militaire, phrases sobres, sans humour, débit un peu plus rapide.
+- Alignement INS rapide : le copilote encadre STD HDG sur la page HSI (alignement en ~90 s), vérifie que ça a pris et retient le bon bouton. À « QUAL OK », il passe tout seul la centrale en IFA.
+- RWR : plus de fausses alertes pendant l'autotest du RWR au démarrage.
+- Nouvelles touches (page VOL) : MENU RADIO (ta touche DCS, lue dans tes réglages) et DEMANDE RAVITO (séquence réglable avec le bouton RADIO RAVITO de la fenêtre).
+- Envoi des diagnostics à Claude sur un dépôt GitHub privé (bouton ENVOI À CLAUDE), automatiquement après chaque vol.
