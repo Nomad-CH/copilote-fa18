@@ -113,8 +113,9 @@ touche **MARQUER** enregistre tout ce qu'il voit à un instant précis. Le bouto
   ligne par action. `surveillance.py` : les alertes. `pages.py` : les touches.
 - `outils/CopiloteExport.lua` : le lien installé dans DCS (RWR, écrans, emport).
 - `tests/` : vérifications lancées avant chaque version.
-- Chaque étiquette `vX.Y.Z` poussée sur GitHub fabrique l'installateur et
-  publie la version (`.github/workflows/version.yml`).
+- Chaque envoi sur `main` fabrique l'installateur ; si le numéro de version
+  (`copilote/__init__.py`) est nouveau, il publie la version
+  (`.github/workflows/version.yml`).
 
 ## Remerciements et licences
 
