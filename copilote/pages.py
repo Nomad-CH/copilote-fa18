@@ -102,7 +102,7 @@ def page_armes(app):
         _selecteur(app, "FLIR_SW", "FLIR", 3, {"ON": VERT, "STBY": AMBRE}),
         _bascule(app, "LTD_R_SW", "LASER", ("SAFE", "ARMÉ"), (GRIS, ROUGE)),
         _larguer(app, "chaff"),
-        _selecteur(app, "IR_COOL_SW", "REFROID. IR", 3, {"NORM": VERT, "ORIDE": AMBRE}),
+        _defense(app),
         _rwr(app),
 
         _selecteur(app, "CMSD_DISPENSE_SW", "LEURRES", 3, {"ON": VERT, "BYPASS": AMBRE}),
@@ -163,6 +163,12 @@ def _station(app, bouton, nom, numero):
         contenu = f"{_abrege(arme)}\nx{n}" if n else "VIDE"
     return Touche(f"STA {numero} {nom}", contenu or nom, AMBRE if choisie else GRIS,
                   lambda: app.station(bouton))
+
+
+def _defense(app):
+    mode = app.cfg.get("defense", "CONSEIL")
+    couleur = {"OFF": GRIS, "CONSEIL": VERT, "AUTO": ROUGE}.get(mode, VERT)
+    return Touche("DÉFENSE", mode, couleur, app.mode_defense)
 
 
 def _largage_selectif(app):

@@ -44,6 +44,7 @@ class Copilote:
         self.suivi_wpt = SuiviWaypoints()
         self._dernier_suivi = 0.0
         self.surv = Surveillance(self.a, self.dire, self.ex, export, self.boite)
+        self.surv.larguer = self.larguer
         self.page = "vol"
         self.historique = collections.deque(maxlen=40)
         self.nb_messages = 0
@@ -201,6 +202,18 @@ class Copilote:
         from . import cockpit
         return [(s, nom) for s, nom in self.STATIONS_LARGAGE
                 if cockpit.station_choisie(self.export, self.b, s)]
+
+    def mode_defense(self):
+        modes = ["OFF", "CONSEIL", "AUTO"]
+        actuel = self.cfg.get("defense", "CONSEIL")
+        self.cfg["defense"] = modes[(modes.index(actuel) + 1) % 3 if actuel in modes else 1]
+        try:
+            from .chemins import sauver_config
+            sauver_config(self.cfg)
+        except OSError:
+            pass
+        self.dire({"OFF": "Défense coupée.", "CONSEIL": "Défense en conseil.",
+                   "AUTO": "Défense automatique. Réserve de dix leurres."}[self.cfg["defense"]])
 
     def mode_largage(self):
         self.cfg["largage_mode"] = "RACK" if self.cfg.get("largage_mode", "STORES") == "STORES" else "STORES"

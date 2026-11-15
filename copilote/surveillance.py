@@ -78,6 +78,7 @@ class Surveillance:
         self.a, self._dire, self.ex = avion, dire, executeur
         self.export = export
         self.boite = boite
+        self.larguer = None        # fonction de largage des leurres (donnee par le copilote)
         self._prochaine_lecture_pages = 0.0
         self.actives = []          # textes courts pour l'affichage
         self._etat = {}
@@ -183,7 +184,10 @@ class Surveillance:
         qui ne sont pas des menaces (Dog Ear et Snow Drift pendant tes vols) :
         on se tait 25 s apres l'allumage, et pendant le demarrage."""
         maintenant = time.time()
-        allume = bool(self.export.ecrans.get(7))
+        from . import cockpit
+        bouton = cockpit.rwr_allume(self.export, self.a.b) if self.export.ordres_possibles else None
+        # mise sous tension : le bouton POWER (lien version 3), sinon l'ecran RWR
+        allume = bouton if bouton is not None else bool(self.export.ecrans.get(7))
         if allume:
             self.a.rwr_etat = True
         if allume and not self._rwr_allume:
@@ -206,7 +210,8 @@ class Surveillance:
             if self.boite is not None:
                 self.boite.symbole_rwr(sym, self.export.ecrans.get(7, ""))
             nom, conseil = menace(sym, sam)
-            accroche = f"{nom}, nous accroche ! " + CONSEIL.get(conseil, "")
+            mode_def = self.ex.cfg.get("defense", "CONSEIL")
+            accroche = f"{nom}, nous accroche ! " + (CONSEIL.get(conseil, "") if mode_def != "OFF" else "")
             connu = self.menaces.get(sym)
             if connu is None:
                 self.menaces[sym] = {"niveau": niveau, "vu": maintenant}
@@ -230,11 +235,70 @@ class Surveillance:
                         connu["niveau"] = niveau
                 else:
                     connu["niveau"] = niveau
+        self._defense(vues, sam, maintenant)
         for sym in list(self.menaces):
             if sym not in vues and maintenant - self.menaces[sym]["vu"] > 4:
                 if self.menaces[sym]["niveau"] == "clignote":
                     self._dire(f"{nom_menace(sym)} perdu.", False)
                 del self.menaces[sym]
+
+    # ------------------------------------------------------------- defense
+    # Regles choisies avec toi le 15 nov. : un simple accrochage ne vide pas les
+    # leurres. En AUTO : paillettes (menace radar) ou leurres IR (menace IR) seulement
+    # si l'accrochage dure 4 s, puis toutes les 3 s, au plus 3 paquets par menace ;
+    # si le voyant CW s'allume (guidage d'un missile) : tout de suite, puis toutes
+    # les 1,5 s, au plus 6. Jamais sous la reserve (10 de chaque).
+    RESERVE = 10
+
+    def _defense(self, vues, sam, maintenant):
+        from .exportdcs import menace
+        cw = self.a.allume("RH_ADV_CW")
+        for sym, niveau in vues.items():
+            info = self.menaces.get(sym)
+            if info is None:
+                continue
+            if niveau != "clignote" and not cw:
+                info.pop("lock", None)
+                continue
+            ep = info.setdefault("lock", {"debut": maintenant, "paquets": 0, "dernier": 0.0})
+            self._capturer_rwr(sym, ep, maintenant, cw)
+            if self.ex.cfg.get("defense", "CONSEIL") != "AUTO" or self.larguer is None:
+                continue
+            _nom, conseil = menace(sym, sam)
+            sorte = "flare" if conseil == "F" else "chaff"
+            if cw:
+                pret, maxi, ecart = True, 6, 1.5
+            else:
+                pret, maxi, ecart = maintenant - ep["debut"] >= 4, 3, 3.0
+            if not pret or ep["paquets"] >= maxi or maintenant - ep["dernier"] < ecart:
+                continue
+            stock = self.export.leurres
+            if stock:
+                reste = stock[0] if sorte == "chaff" else stock[1]
+                if reste <= self.RESERVE:
+                    if not ep.get("reserve_dite"):
+                        ep["reserve_dite"] = True
+                        self._dire("Réserve de leurres atteinte. Largage à ta main.", True)
+                    continue
+            ep["paquets"] += 1
+            ep["dernier"] = maintenant
+            self.larguer(sorte)
+            if self.boite is not None:
+                self.boite.ecrire("defense_auto", symbole=sym, leurre=sorte, cw=cw,
+                                  paquet=ep["paquets"], leurres=stock)
+
+    def _capturer_rwr(self, sym, ep, maintenant, cw):
+        """Pendant un accrochage, garde l'ecran RWR et les voyants (2 fois par
+        seconde, 20 s maxi) : c'est ce qui me permettra de reconnaitre un tir."""
+        if self.boite is None or ep.get("captures", 0) >= 40 or maintenant - ep.get("capture", 0) < 0.5:
+            return
+        ep["captures"] = ep.get("captures", 0) + 1
+        ep["capture"] = maintenant
+        b = self.a.b
+        self.boite.ecrire("rwr_accroche", symbole=sym, depuis=round(maintenant - ep["debut"], 1),
+                          cw=cw, voyants={v: b.lire(v) for v in ("RH_ADV_SAM", "RH_ADV_AAA", "RH_ADV_AI",
+                                                                  "RH_ADV_CW", "RH_ADV_DISP")},
+                          ecran=(self.export.ecrans.get(7) or "")[:3000])
 
     def _suivre_armes(self):
         stations = self.export.stations()

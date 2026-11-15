@@ -1,6 +1,7 @@
-**Version 0.13.0** — JDAM station par station, leurres
+**Version 0.14.0** — défense
 
-- Plan de vol, section BOMBES JDAM : pour chaque station (8, 2, 7, 3), choisis le waypoint visé, puis PROGRAMMER LES JDAM. Le copilote ouvre la page MSN, passe de station en station (STEP), entre la cible en PP1 et relit les coordonnées sur la page MSN.
-- La page MSN n'apparaît qu'après la mise en route de la bombe : le copilote attend (jusqu'à 45 s).
-- JDAM SUR LE WAYPOINT CHOISI (TOO) : possible aussi au sol.
-- Leurres : DISPENSER sur ON (plus de BYPASS). Le copilote te dit s'il manque le master arm ou le mode A/A / A/G. Un appui à la fois.
+- Touche DÉFENSE (page COMBAT, à la place de REFROID. IR) : OFF / CONSEIL / AUTO.
+  - CONSEIL (par défaut) : annonce la menace et le conseil, ne largue rien.
+  - AUTO : un simple accrochage ne vide pas les leurres. Paillettes (menace radar) ou leurres IR (menace IR) seulement si l'accrochage dure 4 s, puis toutes les 3 s, 3 paquets maximum par menace. Si le voyant CW s'allume (guidage d'un missile) : tout de suite, puis toutes les 1,5 s, 6 maximum. Réserve de 10 jamais touchée. Master arm et mode A/A ou A/G nécessaires.
+- Pendant chaque accrochage, l'écran RWR et les voyants sont enregistrés (boîte noire) pour apprendre à reconnaître un tir.
+- RWR : la mise sous tension est lue sur le bouton POWER, plus de silence de 25 s à la première menace.
