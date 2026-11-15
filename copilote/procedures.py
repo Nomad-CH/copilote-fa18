@@ -249,41 +249,54 @@ def manoeuvrer_frein(b, a, attendre, serrer, boite=None):
 
 
 def _serrer_frein(r):
-    if not manoeuvrer_frein(r.b, r.a, r.attendre, True, getattr(r, "boite", None)):
+    from . import cockpit
+    ok = cockpit.manoeuvrer_frein(r.export, r.cfg, getattr(r, "boite", None), True)
+    if ok is None:     # lien DCS trop ancien : ancienne methode
+        ok = manoeuvrer_frein(r.b, r.a, r.attendre, True, getattr(r, "boite", None))
+    if not ok:
         r.non_confirmes.append("frein de parking")
         r.dire("Frein de parking à ta charge.")
 
 
 # ---------------------------------------------------------- RWR
 def allumer_rwr(r):
-    """Le RWR n'a pas de voyant de marche fiable dans DCS-BIOS. Mais a chaque
-    mise sous tension il fait son autotest et affiche des symboles (Dog Ear,
-    Snow Drift) : on appuie, et si rien ne s'affiche en 12 s c'est qu'on vient
-    de l'eteindre -> on rappuie."""
+    """Le voyant POWER du RWR (relu directement par le lien, version 3) dit s'il
+    est allume. Sinon on appuie, et on verifie : voyant allume, ou l'ecran du RWR
+    qui change (autotest). Pas de reaction : on rappuie une fois."""
+    from . import cockpit
     x = r.export
-    if x is None or not x.vivant:
-        r.b.envoyer("RWR_POWER_BTN", 1); r.attendre(0.3); r.b.envoyer("RWR_POWER_BTN", 0)
-        r.a.rwr_appui = time.time()
-        return
-    if x.ecrans.get(7):          # l'ecran du RWR a du contenu : il est deja allume
+    if x is not None and x.ordres_possibles and cockpit.rwr_allume(x, r.b):
         r.a.rwr_etat = True
         return
     for essai in range(2):
+        avant = (x.ecrans.get(7) or "") if x is not None else ""
         r.b.envoyer("RWR_POWER_BTN", 1)
-        r.attendre(0.3)
+        r.attendre(0.4)
         r.b.envoyer("RWR_POWER_BTN", 0)
         r.a.rwr_appui = time.time()
+        if x is None or not x.vivant:
+            return
         fin = r.horloge() + 12
         while r.horloge() < fin:
-            if x.ecrans.get(7):
+            if (x.ordres_possibles and cockpit.rwr_allume(x, r.b)) or (x.ecrans.get(7) or "") != avant:
                 r.a.rwr_etat = True
+                if getattr(r, "boite", None) is not None:
+                    r.boite.ecrire("rwr_allume", essai=essai + 1,
+                                   voyant=x.arg(cockpit.ARG_RWR_VOYANT),
+                                   ecran=(x.ecrans.get(7) or "")[:2000])
                 return
             r.attendre(0.3)
         r.a.rwr_etat = False
     if getattr(r, "boite", None) is not None:
-        r.boite.ecrire("rwr_sans_autotest")
+        r.boite.ecrire("rwr_sans_reaction", voyant=x.arg(cockpit.ARG_RWR_VOYANT),
+                       bouton=x.arg(277), ecran=(x.ecrans.get(7) or "")[:2000])
     r.non_confirmes.append("RWR")
     r.dire("RWR non confirmé. Vérifie-le.")
+
+
+def _iff_dl(r):
+    from .navigation import systemes_nav
+    systemes_nav(r)
 
 
 def _rwr_si_besoin(r):
@@ -465,6 +478,7 @@ def _demarrage(porte_avions):
         Touche("gaz_gauche_idle", "Manette gauche sur IDLE, à toi.",
               reussite=lambda a: a.rpm_g >= 30, delai=6),
         Appelle(allumer_rwr, "RWR"),
+        Appelle(_iff_dl, "IFF et D/L"),
         Attend(lambda a: a.rpm_g >= 60, 90, "moteur gauche au ralenti"),
         Appelle(_hmd, "casque HMD"),
         Appui("FCS_RESET_BTN", 0.4),
@@ -476,7 +490,8 @@ def _demarrage(porte_avions):
         Regle("EJECTION_SEAT_ARMED", "ARMED"),
         Appelle(_regler_bingo, "réglage BINGO"),
         Dit("Deux moteurs au ralenti. Défenses en ligne : RWR, leurres, brouilleur en veille. "
-            "Passage IFA automatique à QUAL OK. Test FCS à ta charge."),
+            "IFF et liaison de données en marche. Passage IFA automatique à QUAL OK. "
+            "Test FCS à ta charge."),
     ]
 
 

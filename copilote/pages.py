@@ -155,17 +155,18 @@ def _abrege(nom):
 
 def _station(app, bouton, nom, numero):
     """Touche de largage selectif, avec le vrai chargement si le lien DCS marche."""
-    choisie = app.a.allume(bouton + "_LT")
+    from .cockpit import station_choisie
+    choisie = station_choisie(app.export, app.b, bouton)
     contenu = ""
     if app.export is not None and app.export.vivant:
         arme, n = app.export.stations().get(numero, ("", 0))
         contenu = f"{_abrege(arme)}\nx{n}" if n else "VIDE"
     return Touche(f"STA {numero} {nom}", contenu or nom, AMBRE if choisie else GRIS,
-                  lambda: app.appui_bouton(bouton))
+                  lambda: app.station(bouton))
 
 
 def _largage_selectif(app):
-    n = sum(1 for s, _ in app.STATIONS_LARGAGE if app.a.allume(s + "_LT"))
+    n = len(app.stations_choisies())
     return Touche("LARGAGE\nSÉLECTIF", f"{n} STA" if n else "CHOISIS", ROUGE if n else GRIS,
                   app.largage_selectif, True)
 
@@ -314,14 +315,6 @@ def _wpt(app):
     return Touche(f"WPT {info['wypt']}", detail.strip() or "-", guide)
 
 
-def _point(app):
-    p = app.nav.point
-    if p is None:
-        return Touche("CARNET", "VIDE", SOMBRE)
-    n = len(app.nav.points)
-    return Touche(f"POINT {app.nav.choisi + 1}/{n}", p.nom[:10], SOMBRE)
-
-
 def _tacan(app):
     from .navigation import tacan_choisi
     t = tacan_choisi(app.cfg, app.nav)
@@ -332,27 +325,23 @@ def _tacan(app):
 
 
 def page_mission(app):
-    """Page NAV : waypoints, carnet de points (carte F10), TACAN, pilote automatique."""
+    """Page NAV, simple : la gestion du plan de vol se fait dans la fenetre."""
     return [
-        _proc(app, "wpt_moins", "WPT\n◀"),
+        _proc(app, "wpt_moins", "◀\nWAYPOINT"),
         _wpt(app),
-        _proc(app, "wpt_plus", "WPT\n▶"),
+        _proc(app, "wpt_plus", "WAYPOINT\n▶"),
         _proc(app, "retour_base", "RETOUR\nBASE"),
-        Touche("PRENDRE\nPOINT", "carte F10", BLEU, app.prendre_point),
-        Touche("POINT\nAVION", "ici", BLEU, lambda: app.prendre_point(True)),
-
-        Touche("POINT\n◀", "", GRIS, lambda: app.point_suivant(-1)),
-        _point(app),
-        Touche("POINT\n▶", "", GRIS, lambda: app.point_suivant(1)),
-        _proc(app, "point_wpt", "CRÉER\nWAYPOINT"),
-        _proc(app, "aller_point", "ALLER AU\nPOINT"),
-        Touche("VISEUR\nCARTE", "", GRIS, lambda: app.fenetre("viseur")),
+        Touche("PLAN\nDE VOL", "fenêtre", BLEU, lambda: app.fenetre("plan")),
+        Touche("MARQUER\nICI", "position", BLEU, lambda: app.prendre_point(True)),
 
         _tacan(app),
-        _proc(app, "tacan", "RÉGLER\nTACAN"),
-        _proc(app, "ap_balt", "A/P\nALTITUDE"),
-        _proc(app, "ap_cpl", "A/P\nNAV"),
+        _proc(app, "tacan", "TACAN\nRÉGLER"),
+        _proc(app, "tacan_ap", "TACAN\n+ A/P"),
+        _proc(app, "ap_balt", "A/P\nGARDE ALT."),
+        _proc(app, "ap_cpl", "A/P\nSUIT NAV"),
         Touche("A/P\nOFF", "", ROUGE, lambda: app.ex.lancer("ap_off")),
+
+        VIDE, VIDE, VIDE, VIDE, VIDE,
         Touche("FENÊTRE", getattr(app, "mode_fenetre", "").upper(), GRIS,
                lambda: app.fenetre("suivante")),
     ] + _ligne_etat(app)

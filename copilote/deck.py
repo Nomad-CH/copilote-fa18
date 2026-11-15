@@ -242,6 +242,24 @@ class Fenetre:
         self.racine.mainloop()
 
 
+def elgato_ouvert():
+    """Le logiciel Stream Deck d'Elgato tourne-t-il ? (il se dispute l'appareil)"""
+    if sys.platform != "win32":
+        return False
+    try:
+        import subprocess
+        sortie = subprocess.run(["tasklist", "/FI", "IMAGENAME eq StreamDeck.exe", "/NH"],
+                                capture_output=True, text=True, timeout=5,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+        return "streamdeck.exe" in sortie.lower()
+    except Exception:
+        return False
+
+
+AVERTISSEMENT_ELGATO = ("Le logiciel Stream Deck d'Elgato est ouvert : il se dispute les touches "
+                        "avec le copilote. Ferme-le (icône près de l'horloge, clic droit, Quitter).")
+
+
 def ouvrir_stream_deck(luminosite=70, dossier_app=""):
     """Stream Deck XL si possible, sinon (None, raison)."""
     if dossier_app:  # hidapi.dll est range a cote du programme
@@ -263,6 +281,6 @@ def ouvrir(forcer_fenetre=False, luminosite=70, dossier_app="", master=None):
     if not forcer_fenetre:
         ecran, remarque = ouvrir_stream_deck(luminosite, dossier_app)
         if ecran is not None:
-            return ecran, ""
+            return ecran, AVERTISSEMENT_ELGATO if elgato_ouvert() else ""
         return Fenetre(master), remarque
     return Fenetre(master), ""

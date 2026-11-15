@@ -1,10 +1,13 @@
-**Version 0.9.0** — étape 2 : navigation
+**Version 0.10.0** — corrections après ton vol du 15 novembre (après-midi)
 
-- Page NAV du Stream Deck (ancienne page MISSION).
-- Waypoint précédent / suivant, avec cap et distance annoncés. Passage des waypoints annoncé (5 nautiques, passé) et waypoint suivant sélectionné automatiquement.
-- RETOUR BASE : waypoint 0, cap, distance et carburant estimé à l'arrivée.
-- Carnet de points : PRENDRE POINT sur la carte F10 (viseur au centre de l'écran), POINT AVION (position actuelle), ou coordonnées tapées dans la fenêtre (bouton POINTS ET TACAN).
-- CRÉER WAYPOINT : le point choisi devient un waypoint (à partir du 20), coordonnées précises et altitude. ALLER AU POINT : crée et met le cap dessus.
-- TACAN : canaux enregistrés dans la fenêtre, réglage en une touche (canal, X/Y, T/R ou A/A, guidage TACAN sur la HSI).
-- Pilote automatique : maintien d'altitude, couplé sur la navigation, déconnexion.
-- La liaison DCS est mise à jour : relance ta mission après la mise à jour.
+- Liaison DCS version 3 : le copilote peut cliquer directement sur les commandes que DCS-BIOS manœuvre mal. Relance ta mission après la mise à jour.
+- Frein de parking et boutons de station (largage sélectif) : clic direct, vérifié, la bonne façon est retenue.
+- RWR : état lu sur le vrai voyant POWER, allumé et vérifié au démarrage.
+- Leurres : correction d'un bug qui coupait la vérification ; clic direct en secours.
+- Brouilleur et DISPENSER : positions corrigées.
+- IFF et liaison de données (D/L) mis en marche au démarrage.
+- TACAN : mise en marche (ON) vérifiée ; nouvelle touche TACAN + A/P (pilote auto qui suit le TACAN).
+- Pilote auto : si l'avion refuse, le copilote le dit.
+- PLAN DE VOL : nouvelle fenêtre (bouton PLAN sur la barre) : lire les waypoints de l'avion, ajouter depuis la carte F10, la position de l'avion ou des coordonnées, ENVOYER À L'AVION, Y ALLER, canaux TACAN.
+- Page NAV du Stream Deck simplifiée.
+- Avertissement si le logiciel Stream Deck d'Elgato est ouvert.

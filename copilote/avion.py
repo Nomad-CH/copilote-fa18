@@ -17,8 +17,8 @@ POS = {
     "WING_FOLD_ROTATE": {"FOLD": 0, "HOLD": 1, "SPREAD": 2},
     "INS_SW": {"OFF": 0, "CV": 1, "GND": 2, "NAV": 3, "IFA": 4},
     "RADAR_SW": {"OFF": 0, "STBY": 1, "OPR": 2},
-    "CMSD_DISPENSE_SW": {"OFF": 0, "ON": 1, "BYPASS": 2},
-    "ECM_MODE_SW": {"OFF": 0, "STBY": 1, "BIT": 2, "REC": 3, "XMIT": 4},
+    "CMSD_DISPENSE_SW": {"BYPASS": 0, "ON": 1, "OFF": 2},   # rotacteur : ordre direct
+    "ECM_MODE_SW": {"XMIT": 0, "REC": 1, "BIT": 2, "STBY": 3, "OFF": 4},   # rotacteur : ordre direct
     "LEFT_DDI_BRT_SELECT": {"OFF": 0, "NIGHT": 1, "DAY": 2},
     "RIGHT_DDI_BRT_SELECT": {"OFF": 0, "NIGHT": 1, "DAY": 2},
     "IR_COOL_SW": {"OFF": 0, "NORM": 1, "ORIDE": 2},
@@ -126,6 +126,12 @@ class Avion:
 
     @property
     def frein_parking(self):
+        x = getattr(self, "export", None)
+        if x is not None and x.ordres_possibles:
+            from .cockpit import frein_serre
+            v = frein_serre(x)
+            if v is not None:
+                return v
         # Poignee tiree (PULL = 1) et tournee (ROTATE = 2) : c'est ce que montrait
         # ton cockpit frein serre (marques du 15 nov.). L'etiquette DCS-BIOS
         # "2 = release" est trompeuse : l'entree 2 serre, l'entree 1 relache.

@@ -290,6 +290,9 @@ class FausseNav:
         self.ufc_mode, self.cue = "", set()
         self.saisie, self.champ, self.tacan_on, self.canal = "", None, False, ""
         self.entrees = []      # ce qui a ete tape (pour les essais)
+        self.iff_on = self.dl_on = False
+        self.frein = [1.0, 1.0]                 # tiree, tournee (frein serre au depart)
+        self.stations = {152: 0.0, 154: 0.0, 156: 0.0, 158: 0.0, 160: 0.0}
         self.options("")
 
     def options(self, mode):
@@ -303,8 +306,9 @@ class FausseNav:
         for i, o in enumerate(opts, 1):
             self.h.txt(f"UFC_OPTION_DISPLAY_{i}", o)
             self.h.txt(f"UFC_OPTION_CUEING_{i}", "")
-        self.h.txt("UFC_SCRATCHPAD_STRING_1_DISPLAY", "OF" if mode == "TCN" and not self.tacan_on else "")
-        self.h.txt("UFC_SCRATCHPAD_STRING_2_DISPLAY", "F" if mode == "TCN" and not self.tacan_on else "")
+        marche = {"TCN": self.tacan_on, "IFF": self.iff_on, "DL": self.dl_on}.get(mode)
+        self.h.txt("UFC_SCRATCHPAD_STRING_1_DISPLAY", "" if marche is None else ("ON" if marche else "OF"))
+        self.h.txt("UFC_SCRATCHPAD_STRING_2_DISPLAY", "" if marche is None or marche else "F")
 
     def traiter(self):
         nouv = self.h.recu[self.lu:]
@@ -327,18 +331,23 @@ class FausseNav:
                         self.wypt = max(0, self.wypt + (1 if pb == 12 else -1))
                     elif pb == 11:
                         self.wypt_box, self.tcn_box = True, False
-                    elif pb == 5:
+                    elif pb == 5 and self.tacan_on:
                         self.tcn_box, self.wypt_box = True, False
                     elif pb == 10:
                         self.data = True
                         self.options("POSN")
             elif ident == "UFC_AP":
                 self.options("AP")
-            elif ident == "UFC_TCN":
-                self.options("TCN")
-            elif ident == "UFC_ONOFF" and self.ufc_mode == "TCN":
-                self.tacan_on = not self.tacan_on
-                self.options("TCN")
+            elif ident in ("UFC_TCN", "UFC_IFF", "UFC_DL"):
+                self.options(ident[4:])
+            elif ident == "UFC_ONOFF" and self.ufc_mode in ("TCN", "IFF", "DL"):
+                if self.ufc_mode == "TCN":
+                    self.tacan_on = not self.tacan_on
+                elif self.ufc_mode == "IFF":
+                    self.iff_on = not self.iff_on
+                else:
+                    self.dl_on = not self.dl_on
+                self.options(self.ufc_mode)
             elif ident.startswith("UFC_OS"):
                 i = int(ident[-1])
                 o = self.opts[i - 1]
@@ -364,6 +373,20 @@ class FausseNav:
             elif ident.startswith("UFC_") and ident[4:].isdigit():
                 self.saisie += ident[4:]
 
+    def clic(self, appareil, commande, valeur):
+        """Clic direct (lien version 3) : frein de parking et stations."""
+        if appareil == 5 and commande == 3006 and valeur == 1:
+            self.frein[1] = 1.0
+        elif appareil == 5 and commande == 3005 and valeur == 1:
+            if self.frein[0] > 0.5:
+                self.frein = [0.0, 0.0]          # repoussee : elle revient a l'horizontale
+            elif self.frein[1] > 0.66:
+                self.frein[0] = 1.0
+        elif appareil == 23 and valeur == 1:
+            arg = {3005: 152, 3006: 154, 3007: 156, 3008: 158, 3009: 160}.get(commande)
+            if arg:
+                self.stations[arg] = 0.0 if self.stations[arg] else 1.0
+
     def _maj_point(self):
         e = self.entrees
         # hemisphere+DDMM, decimales, hemisphere+DDDMM, decimales
@@ -380,10 +403,14 @@ class FausseNav:
     def page(self):
         if self.data:
             lat, lon = self.points.get(self.wypt, (0.0, 0.0))
-            t = "\x1fWYPT_Page_Number\n%d\n\x1fPRECISE_1__id:30\nPRECISE\n" % self.wypt
+            t = "\x1fWYPT_Number\nWYPT %d\n\x1fPRECISE_1__id:25\nPRECISE\n" % self.wypt
             if self.precise:
-                t += "\x1fPRECISE_1_box__id:31\n\n"
-            t += "\x1fLAT\nN %d°%06.3f'\n" % (int(lat), (lat - int(lat)) * 60)
+                t += "\x1fPRECISE_1_box__id:26\n\n"
+            if self.wypt in self.points:
+                t += "\x1fWYPT_Latitude\nN %d°%07.4f'\n" % (int(lat), (lat - int(lat)) * 60)
+                t += "\x1fWYPT_Longitude\nE %d°%07.4f'\n" % (int(lon), (lon - int(lon)) * 60)
+                t += "\x1fWYPT_Elev\n120FT\n"
+            t += "\x1fWYPT_SequenceData\n0- 1- 2\n"
             return t
         from .navigation import distance_cap
         lat, lon = self.points.get(self.wypt, (0.0, 0.0))
@@ -399,16 +426,31 @@ class FausseNav:
         return t
 
 
-def scenario_navigation(hornet, port=7790, stop=None, nav=None):
+def scenario_navigation(hornet, port=7790, stop=None, nav=None, port_ordres=None):
     import json
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    ordres = None
+    if port_ordres:
+        ordres = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        ordres.bind(("127.0.0.1", port_ordres))
+        ordres.settimeout(0.0)
     nav = nav or FausseNav(hornet)
     while not (stop and stop.is_set()):
         with hornet.verrou:
             nav.traiter()
+        while ordres is not None:
+            try:
+                msg = ordres.recv(2048).decode()
+            except (BlockingIOError, socket.timeout, OSError):
+                break
+            m = msg.split()
+            if len(m) == 4 and m[0] == "clic":
+                nav.clic(int(m[1]), int(m[2]), float(m[3]))
         paquet = {"k": "etat", "t": 0, "avion": "FA-18C_hornet", "rwr": "",
                   "pos": {"lat": nav.avion[0], "lon": nav.avion[1], "alt": 3000, "cap": 0},
-                  "vue": {"lat": 41.75, "lon": 41.70, "sol": 120.0, "haut": 20000}}
+                  "vue": {"lat": 41.75, "lon": 41.70, "sol": 120.0, "haut": 20000},
+                  "args": {"240": nav.frein[0], "241": nav.frein[1], "276": 0.0,
+                           **{str(k): v for k, v in nav.stations.items()}}}
         s.sendto(json.dumps(paquet).encode(), ("127.0.0.1", port))
         s.sendto(json.dumps({"k": "ecran", "i": 4, "txt": nav.page()}).encode(), ("127.0.0.1", port))
         time.sleep(0.1)

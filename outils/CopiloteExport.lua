@@ -1,8 +1,12 @@
--- Lien entre DCS et le copilote F/A-18 (version 2).
+-- Lien entre DCS et le copilote F/A-18 (version 3).
 -- Charge par Export.lua. Envoie au copilote, sur cet ordinateur uniquement
 -- (127.0.0.1, port UDP 7790) : le texte du RWR, le texte des ecrans du
 -- cockpit, l'emport, la position de l'avion et celle du centre de la vue
--- (carte F10 : sert a prendre un point sur la carte). Ne commande rien dans l'avion.
+-- (carte F10 : sert a prendre un point sur la carte), et la position de
+-- quelques commandes du cockpit.
+-- Recoit du copilote (127.0.0.1, port UDP 7791, cet ordinateur seulement) des
+-- clics de commandes du cockpit, pour celles que DCS-BIOS manoeuvre mal
+-- (poignee de frein, boutons de largage selectif...). Rien d'autre.
 
 local CE = {
 	port = 7790,
@@ -10,6 +14,9 @@ local CE = {
 	periode_ecrans = 0.5,  -- ecrans : 2 fois par seconde, seulement s'ils changent
 	ecrans = { 1, 2, 3, 4, 5, 6 },
 	taille_max = 60000,
+	port_ordres = 7791,
+	-- commandes du cockpit dont on renvoie la position (numeros d'argument DCS)
+	suivis = { 240, 241, 276, 277, 488, 517, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161 },
 }
 
 package.path = package.path .. ";.\\LuaSocket\\?.lua"
@@ -107,15 +114,53 @@ local function envoyer(paquet)
 	end
 end
 
+local function arguments()
+	local dev = appel("GetDevice", 0)
+	if not dev then return nil end
+	local r = {}
+	for _, n in ipairs(CE.suivis) do
+		local ok, v = pcall(dev.get_argument_value, dev, n)
+		if ok and type(v) == "number" then r[tostring(n)] = v end
+	end
+	return r
+end
+
+-- Ordres du copilote : "clic <appareil> <commande> <valeur>" (un par ligne),
+-- ou "suivre <arg> <arg> ..." pour choisir les commandes dont on renvoie la position.
+local function ordres()
+	if not CE.ordres then return end
+	for _ = 1, 30 do
+		local msg = CE.ordres:receive()
+		if not msg then return end
+		for ligne in msg:gmatch("[^\n]+") do
+			local d, c, v = ligne:match("^clic%s+(%d+)%s+(%d+)%s+(%-?[%d%.]+)%s*$")
+			if d then
+				local dev = appel("GetDevice", tonumber(d))
+				if dev then pcall(dev.performClickableAction, dev, tonumber(c), tonumber(v)) end
+			elseif ligne:match("^suivre") then
+				local liste = {}
+				for n in ligne:gmatch("(%d+)") do liste[#liste + 1] = tonumber(n) end
+				if #liste > 0 and #liste <= 64 then CE.suivis = liste end
+			end
+		end
+	end
+end
+
 local function debut()
 	local socket = require("socket")
 	CE.udp = socket.udp()
 	CE.udp:settimeout(0)
+	local o = socket.udp()
+	if o and o:setsockname("127.0.0.1", CE.port_ordres) then
+		o:settimeout(0)
+		CE.ordres = o
+	end
 	CE.prochain_rwr, CE.prochains_ecrans, CE.derniers = 0, 0, {}
 end
 
 local function image()
 	if not CE.udp then return end
+	pcall(ordres)
 	local t = appel("LoGetModelTime")
 	if type(t) ~= "number" then return end
 	if t >= CE.prochain_rwr then
@@ -124,7 +169,7 @@ local function image()
 		local leurres = appel("LoGetSnares")
 		local av, vue = positions()
 		envoyer({
-			pos = av, vue = vue,
+			pos = av, vue = vue, args = arguments(),
 			k = "etat", t = t,
 			avion = type(self) == "table" and self.Name or "",
 			rwr = ecran(7),
@@ -151,6 +196,10 @@ local function fin()
 		pcall(envoyer, { k = "fin" })
 		CE.udp:close()
 		CE.udp = nil
+	end
+	if CE.ordres then
+		CE.ordres:close()
+		CE.ordres = nil
 	end
 end
 

@@ -36,7 +36,8 @@ class BoiteNoire:
     def _fichier(self):
         return os.path.join(self.dossier, "decouvertes_" + time.strftime("%Y%m%d") + ".jsonl")
 
-    def ecrire(self, sorte, **donnees):
+    def ecrire(self, _sorte, **donnees):
+        sorte = _sorte
         try:
             os.makedirs(self.dossier, exist_ok=True)
             chemin = self._fichier()

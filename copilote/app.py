@@ -84,6 +84,16 @@ class Copilote:
             return
         time.sleep(1.2)
         apres = x.leurres or avant
+        if apres == avant and x.ordres_possibles:
+            # DCS-BIOS sans effet : clic direct sur l'interrupteur (appareil 13)
+            cmd, val = (3032, 1) if sorte == "chaff" else (3033, -1)
+            x.clic(13, cmd, val)
+            time.sleep(0.3)
+            x.clic(13, cmd, 0)
+            time.sleep(1.2)
+            apres = x.leurres or avant
+            self.boite.ecrire("leurres_clic_direct", leurre=sorte, avant=avant, apres=apres,
+                              interrupteur=x.arg(488), dispenser=x.arg(517))
         paillettes, ir = avant[0] - apres[0], avant[1] - apres[1]
         if paillettes > 0 and ir > 0:
             self.dire("Paillettes et leurres.")
@@ -93,8 +103,10 @@ class Copilote:
             self.dire("Leurre." if sorte == "flare" else "Leurre IR largué, pas de paillettes.")
         else:
             self.dire("Négatif, aucun largage. Vérifie le DISPENSER.")
-            self.boite.ecrire("largage_sans_effet", sorte=sorte, leurres=avant,
-                              dispenser=b.lire("CMSD_DISPENSE_SW"))
+            self.boite.ecrire("largage_sans_effet", leurre=sorte, leurres=avant,
+                              dispenser=b.lire("CMSD_DISPENSE_SW"),
+                              rwr=b.lire("RWR_LOWER_LT"),
+                              args=dict(x.args) if x is not None else None)
 
     def fenetre(self, action):
         """action : 'suivante' (pleine -> barre -> cachee) ou 'coin'."""
@@ -104,8 +116,13 @@ class Copilote:
         threading.Thread(target=self._frein_parking, args=(serrer,), daemon=True).start()
 
     def _frein_parking(self, serrer):
+        from . import cockpit
         from .procedures import manoeuvrer_frein
-        if manoeuvrer_frein(self.b, self.a, time.sleep, serrer, self.boite):
+        ok = cockpit.manoeuvrer_frein(self.export, self.cfg, self.boite, serrer)
+        if ok is None:
+            self.dire("Liaison DCS à mettre à jour pour le frein : relance la mission.")
+            ok = manoeuvrer_frein(self.b, self.a, time.sleep, serrer, self.boite)
+        if ok:
             self.dire("Frein de parking serré." if serrer else "Frein de parking relâché.")
         else:
             self.dire("Négatif. Frein de parking à ta charge.")
@@ -121,7 +138,7 @@ class Copilote:
         """Tu choisis les stations, le copilote fait le reste : selecteur sur
         STORES (ou RACK), master arm, bouton SEL JETT, puis tout remis en securite."""
         b, a = self.b, self.a
-        choisies = [(s, nom) for s, nom in self.STATIONS_LARGAGE if a.allume(s + "_LT")]
+        choisies = self.stations_choisies()
         if not choisies:
             self.dire("Négatif. Aucune station sélectionnée.")
             return
@@ -140,10 +157,10 @@ class Copilote:
         finally:
             b.envoyer("SEL_JETT_KNOB", POS["SEL_JETT_KNOB"]["SAFE"])
             time.sleep(0.3)
+            from . import cockpit
             for s, _ in choisies:
-                if a.allume(s + "_LT"):
-                    b.appuyer(s, 0.2)
-                    time.sleep(0.2)
+                if cockpit.station_choisie(self.export, b, s):
+                    cockpit.basculer_station(self.export, self.cfg, self.boite, b, s)
             if not arme_avant:
                 b.envoyer("MASTER_ARM_SW", 0)
         quoi = "Bidons et charges" if mode == "STORES" else "Pylônes"
@@ -152,6 +169,19 @@ class Copilote:
                   else f"Largage effectué. Stations {noms}.")
         self.boite.ecrire("largage_selectif", mode=mode, stations=[s for s, _ in choisies],
                           quoi=quoi)
+
+    def station(self, bouton):
+        threading.Thread(target=self._station, args=(bouton,), daemon=True).start()
+
+    def _station(self, bouton):
+        from . import cockpit
+        if cockpit.basculer_station(self.export, self.cfg, self.boite, self.b, bouton) is False:
+            self.dire("Négatif. Station non sélectionnée.")
+
+    def stations_choisies(self):
+        from . import cockpit
+        return [(s, nom) for s, nom in self.STATIONS_LARGAGE
+                if cockpit.station_choisie(self.export, self.b, s)]
 
     def mode_largage(self):
         self.cfg["largage_mode"] = "RACK" if self.cfg.get("largage_mode", "STORES") == "STORES" else "STORES"
@@ -182,7 +212,7 @@ class Copilote:
             if not pos:
                 self.dire("Négatif. Position de l'avion inconnue.")
                 return None
-            p = Point(self.nav.nom_libre("Avion"), pos["lat"], pos["lon"], pos.get("alt"), "avion")
+            p = Point(self.nav.nom_libre("Marque"), pos["lat"], pos["lon"], pos.get("alt"), "position")
         else:
             vue = x.vue
             if not vue:
@@ -196,7 +226,7 @@ class Copilote:
                 return None
             p = Point(self.nav.nom_libre("Point"), vue["lat"], vue["lon"], vue.get("sol"), "carte")
         self.nav.ajouter(p)
-        texte = f"{p.nom} enregistré."
+        texte = f"{p.nom} : waypoint {p.num}, à envoyer."
         if x.position:
             from .navigation import distance_cap
             d, c = distance_cap(x.position["lat"], x.position["lon"], p.lat, p.lon)
@@ -205,10 +235,6 @@ class Copilote:
         self.dire(texte)
         self.boite.ecrire("point_pris", point=p.dict())
         return p
-
-    def point_suivant(self, pas=1):
-        p = self.nav.suivant(pas)
-        self.dire(f"{p.nom} sélectionné." if p else "Carnet vide.")
 
     def tacan_suivant(self):
         from .navigation import tacan_choisi

@@ -44,14 +44,18 @@ class Echec(Exception):
 
 # ----------------------------------------------------------------- points
 class Point:
-    def __init__(self, nom, lat, lon, alt_m=None, source=""):
+    """Un waypoint du plan de vol. num = numero dans l'avion ; sync = deja dans l'avion."""
+
+    def __init__(self, nom, lat, lon, alt_m=None, source="", num=None, sync=False):
         self.nom, self.lat, self.lon = nom, float(lat), float(lon)
         self.alt_m = None if alt_m is None else float(alt_m)
         self.source = source
+        self.num = None if num is None else int(num)
+        self.sync = bool(sync)
 
     def dict(self):
-        return {"nom": self.nom, "lat": self.lat, "lon": self.lon,
-                "alt_m": self.alt_m, "source": self.source}
+        return {"nom": self.nom, "lat": self.lat, "lon": self.lon, "alt_m": self.alt_m,
+                "source": self.source, "num": self.num, "sync": self.sync}
 
     def texte(self):
         return f"{ddm(self.lat, True)}  {ddm(self.lon, False)}"
@@ -139,20 +143,27 @@ def distance_cap(lat1, lon1, lat2, lon2):
 
 
 class Carnet:
-    """Les points du copilote, gardes entre deux vols."""
+    """Le plan de vol du copilote : les waypoints, gardes entre deux vols.
+    Chaque point a un numero de waypoint ; ENVOYER A L'AVION ecrit ceux qui ne
+    sont pas encore dans l'avion, LIRE L'AVION recupere la route de la mission."""
 
     def __init__(self, chemin):
         self.chemin = chemin
         self.points = []
         self.choisi = 0
-        self.prochain_wpt = None   # prochain numero de waypoint libre (cette mission)
+        self.tacan = 0
+        self.cible = None          # numero vers lequel aller (fenetre)
         try:
             with open(chemin, encoding="utf-8") as f:
                 for d in json.load(f):
                     self.points.append(Point(d["nom"], d["lat"], d["lon"], d.get("alt_m"),
-                                             d.get("source", "")))
+                                             d.get("source", ""), d.get("num"), False))
         except (OSError, ValueError, KeyError, TypeError):
             pass
+        self.trier()
+
+    def trier(self):
+        self.points.sort(key=lambda p: (p.num is None, p.num or 0))
 
     def sauver(self):
         try:
@@ -162,12 +173,25 @@ class Carnet:
         except OSError:
             pass
 
+    def numero_libre(self):
+        pris = {p.num for p in self.points if p.num is not None}
+        n = max(pris) + 1 if pris else 1
+        return max(1, min(n, 59))
+
     def ajouter(self, point):
-        self.points.append(point)
-        self.points = self.points[-30:]
-        self.choisi = len(self.points) - 1
+        if point.num is None:
+            point.num = self.numero_libre()
+        self.points = [p for p in self.points if p.num != point.num] + [point]
+        self.trier()
+        self.choisi = self.points.index(point)
         self.sauver()
         return point
+
+    def par_numero(self, num):
+        for p in self.points:
+            if p.num == num:
+                return p
+        return None
 
     def nom_libre(self, prefixe):
         n = 1
@@ -192,6 +216,9 @@ class Carnet:
         if 0 <= index < len(self.points):
             del self.points[index]
             self.sauver()
+
+    def a_envoyer(self):
+        return [p for p in self.points if not p.sync and p.num is not None]
 
 
 # ------------------------------------------------------------- page HSI
@@ -231,6 +258,16 @@ def lire_hsi(export, ecrans=(4, 3, 2)):
         n = _valeur(el, "WYPT_Page_Number")
         if n is not None and n.strip().isdigit():
             info["wypt"] = int(n.strip())
+        else:
+            m = re.search(r"(\d+)", _valeur(el, "WYPT_Number") or "")
+            if m:
+                info["wypt"] = int(m.group(1))
+        # page DATA : coordonnees du waypoint affiche, et la route (SEQ)
+        info["lat"] = _coord(_valeur(el, "WYPT_Latitude"))
+        info["lon"] = _coord(_valeur(el, "WYPT_Longitude"))
+        m = re.match(r"\s*(-?\d+)\s*FT", _valeur(el, "WYPT_Elev") or "")
+        info["elev_ft"] = int(m.group(1)) if m else None
+        info["route"] = [int(x) for x in re.findall(r"\d+", _valeur(el, "WYPT_SequenceData") or "")]
         trc = _valeur(el, "TRCData") or ""
         m = re.search(r"(\d+)\s*°\s*/\s*([\d.]+)", trc)
         if m:
@@ -241,6 +278,17 @@ def lire_hsi(export, ecrans=(4, 3, 2)):
             info["vs"] = int(m.group(1))
         return info
     return None
+
+
+def _coord(texte):
+    """ "N 42°08.9433'" -> 42.149055 """
+    if not texte:
+        return None
+    m = re.match(r"\s*([NSEW])\s*(\d+)\s*°\s*([\d.]+)", texte)
+    if not m:
+        return None
+    v = int(m.group(2)) + float(m.group(3)) / 60
+    return -v if m.group(1) in "SW" else v
 
 
 def _bouton(info):
@@ -412,97 +460,152 @@ def entrer(r):
     r.attendre(0.3)
 
 
-# ----------------------------------------------------- point -> waypoint
-def point_en_waypoint(r):
-    """Cree un waypoint avec le point choisi dans le carnet.
-    HSI -> DATA -> PRECISE -> numero libre -> UFC POSN -> latitude, longitude, altitude."""
-    nav = r.nav
-    p = nav.point
-    if p is None:
-        raise Echec("Carnet vide. Prends d'abord un point.")
+# ------------------------------------------------- page DATA (plan de vol)
+def _ouvrir_data(r):
+    """-> etat a remettre en sortant : (PRECISE etait encadre ?)"""
     info = _hsi(r)
-    if info["data"] is False and info["wypt"] is None:
-        raise Echec("Numéro de waypoint illisible.")
-    depart = info["wypt"] or 0
-    cible = nav.prochain_wpt or max(20, depart + 1)
-
-    # page DATA
     if not info["data"]:
         bouton_appris(r, "data", BOUTONS_HSI["data"], lambda a, b: b["data"])
-    precise_avant = _hsi(r)["precise"]
+        r.attendre(0.5)
+    precise = _hsi(r)["precise"]
+    if not precise:
+        bouton_appris(r, "data_precise", BOUTONS_DATA["precise"],
+                      lambda a, b: b["precise"] and not a["precise"])
+    return precise
+
+
+def _fermer_data(r, precise_avant):
     try:
-        if not precise_avant:
-            bouton_appris(r, "data_precise", BOUTONS_DATA["precise"],
-                          lambda a, b: b["precise"] and not a["precise"])
-        # numero du waypoint
-        for _ in range(100):
+        d = lire_hsi(r.export)
+        boutons = r.cfg.get("boutons_hsi", {})
+        if d and d["data"] and d["precise"] and not precise_avant:
+            _appuyer(r, f"{_bouton(d)}{boutons.get('data_precise', 19):02d}")
+        d = lire_hsi(r.export)
+        if d and d["data"]:
+            _appuyer(r, f"{_bouton(d)}{boutons.get('data', 10):02d}")
+    except Exception:
+        pass
+
+
+def _aller_numero(r, cible, page_data):
+    for _ in range(120):
+        d = _hsi(r)
+        if d["data"] != page_data:
+            r.attendre(0.4)
+            d = _hsi(r)
+        if d["wypt"] is None:
+            r.attendre(0.4)
             d = _hsi(r)
             if d["wypt"] is None:
-                raise Echec("Numéro de waypoint illisible sur la page DATA.")
-            if d["wypt"] == cible:
-                break
-            pas = 1 if d["wypt"] < cible else -1
+                raise Echec("Numéro de waypoint illisible.")
+        if d["wypt"] == cible:
+            return d
+        pas = 1 if d["wypt"] < cible else -1
+        if page_data:
             cle = "data_wpt_plus" if pas > 0 else "data_wpt_moins"
-            bouton_appris(r, cle, BOUTONS_DATA["wpt_plus" if pas > 0 else "wpt_moins"],
-                          _change_wpt(pas))
+            cand = BOUTONS_DATA["wpt_plus" if pas > 0 else "wpt_moins"]
         else:
-            raise Echec(f"Waypoint {cible} inaccessible.")
-        # saisie sur l'UFC : si l'UFC n'affiche pas POSN, on lui passe le
-        # waypoint avec l'option UFC de la page DATA (bouton 5)
-        if not option_ufc(r, "POSN", attendu=False):
-            d = _hsi(r)
-            _appuyer(r, f"{_bouton(d)}{r.cfg.get('boutons_hsi', {}).get('data_ufc', 5):02d}")
-            r.attendre(0.6)
-            if not option_ufc(r, "POSN"):
-                raise Echec("Option POSN absente de l'UFC.")
-        for valeur, est_lat in ((p.lat, True), (p.lon, False)):
-            touche, tete, dec = saisie_ufc(valeur, est_lat)
-            taper(r, touche)
-            taper(r, tete)
-            entrer(r)
-            taper(r, dec)
-            entrer(r)
-        if p.alt_m is not None and option_ufc(r, "ELEV", attendu=False):
-            if option_ufc(r, "FEET", attendu=False):
-                taper(r, str(max(0, int(round(p.alt_m * PIEDS)))))
-                entrer(r)
-        _appuyer(r, "UFC_CLR")
-        r.attendre(0.8)
+            cle = "wpt_plus" if pas > 0 else "wpt_moins"
+            cand = BOUTONS_HSI[cle]
+        bouton_appris(r, cle, cand, _change_wpt(pas))
+    raise Echec(f"Waypoint {cible} inaccessible.")
+
+
+def _ecrire(r, p):
+    """Sur la page DATA, au bon numero : UFC POSN, latitude, longitude, altitude."""
+    if not option_ufc(r, "POSN", attendu=False):
         d = _hsi(r)
-        attendu = f"{int(abs(p.lat)):d}°"
-        if attendu not in d["texte"]:
-            r.non_confirmes.append(f"coordonnées du waypoint {cible}")
-        if getattr(r, "boite", None) is not None:
-            r.boite.ecrire("waypoint_cree", numero=cible, point=p.dict(),
-                           texte=d["texte"][:20000])
+        _appuyer(r, f"{_bouton(d)}{r.cfg.get('boutons_hsi', {}).get('data_ufc', 5):02d}")
+        r.attendre(0.6)
+        if not option_ufc(r, "POSN"):
+            raise Echec("Option POSN absente de l'UFC.")
+    for valeur, est_lat in ((p.lat, True), (p.lon, False)):
+        touche, tete, dec = saisie_ufc(valeur, est_lat)
+        taper(r, touche)
+        taper(r, tete)
+        entrer(r)
+        taper(r, dec)
+        entrer(r)
+    if p.alt_m is not None and option_ufc(r, "ELEV", attendu=False):
+        if option_ufc(r, "FEET", attendu=False):
+            taper(r, str(max(0, int(round(p.alt_m * PIEDS)))))
+            entrer(r)
+    _appuyer(r, "UFC_CLR")
+    r.attendre(0.8)
+    d = _hsi(r)
+    ok = (d["lat"] is not None and d["lon"] is not None
+          and abs(d["lat"] - p.lat) < 0.0005 and abs(d["lon"] - p.lon) < 0.0005)
+    if getattr(r, "boite", None) is not None:
+        r.boite.ecrire("waypoint_ecrit", numero=p.num, point=p.dict(), relu=(d["lat"], d["lon"]),
+                       verifie=ok, texte="" if ok else d["texte"][:20000])
+    return ok
+
+
+def envoyer_plan(r):
+    """Ecrit dans l'avion les waypoints du plan qui n'y sont pas encore."""
+    nav = r.nav
+    a_faire = nav.a_envoyer()
+    if not a_faire:
+        r.dire("Plan de vol déjà dans l'avion.")
+        return
+    r.dire(f"Envoi de {len(a_faire)} waypoint{'s' if len(a_faire) > 1 else ''}.")
+    precise = _ouvrir_data(r)
+    faits, rates = [], []
+    try:
+        for p in sorted(a_faire, key=lambda q: q.num):
+            _aller_numero(r, p.num, True)
+            if _ecrire(r, p):
+                p.sync = True
+                faits.append(p.num)
+            else:
+                rates.append(p.num)
     finally:
-        try:
-            d = lire_hsi(r.export)
-            if d and d["data"] and d["precise"] and not precise_avant:
-                _appuyer(r, f"{_bouton(d)}{r.cfg.get('boutons_hsi', {}).get('data_precise', 19):02d}")
-            d = lire_hsi(r.export)
-            if d and d["data"]:
-                _appuyer(r, f"{_bouton(d)}{r.cfg.get('boutons_hsi', {}).get('data', 10):02d}")
-        except Exception:
-            pass
-    nav.prochain_wpt = cible + 1
-    r.dire(f"Waypoint {cible} créé : {p.nom}.")
+        _fermer_data(r, precise)
+        nav.sauver()
+    if rates:
+        r.non_confirmes.append("waypoints " + ", ".join(map(str, rates)))
+        r.dire(f"Waypoints envoyés. À vérifier : {', '.join(map(str, rates))}.")
+    else:
+        r.dire("Plan de vol envoyé. " + (f"Waypoint {faits[0]}." if len(faits) == 1
+                                        else f"Waypoints {faits[0]} à {faits[-1]}."))
 
 
-def aller_au_point(r):
-    """Cree le waypoint puis s'y dirige."""
-    point_en_waypoint(r)
-    cible = r.nav.prochain_wpt - 1
-    for _ in range(100):
-        info = _hsi(r)
-        if info["data"]:
-            r.attendre(0.5)
-            continue
-        if info["wypt"] == cible:
-            break
-        pas = 1 if (info["wypt"] or 0) < cible else -1
-        cle = "wpt_plus" if pas > 0 else "wpt_moins"
-        bouton_appris(r, cle, BOUTONS_HSI[cle], _change_wpt(pas))
+def lire_avion(r):
+    """Recupere la route de la mission (et le waypoint 0) depuis la page DATA."""
+    nav = r.nav
+    precise = _ouvrir_data(r)
+    lus = []
+    try:
+        d = _hsi(r)
+        route = sorted(set([0] + (d["route"] or [])))
+        route += [p.num for p in nav.points if p.num is not None and p.num not in route]
+        for num in sorted(set(route)):
+            d = _aller_numero(r, num, True)
+            r.attendre(0.4)
+            d = _hsi(r)
+            if d["lat"] is None or d["lon"] is None or (abs(d["lat"]) < 0.01 and abs(d["lon"]) < 0.01):
+                continue
+            ancien = nav.par_numero(num)
+            nom = ancien.nom if ancien and ancien.source != "avion" and \
+                abs(ancien.lat - d["lat"]) < 0.0005 else ("Base" if num == 0 else f"WPT {num}")
+            alt = None if d["elev_ft"] is None else d["elev_ft"] / PIEDS
+            nav.ajouter(Point(nom, d["lat"], d["lon"], alt, "avion", num, True))
+            lus.append(num)
+    finally:
+        _fermer_data(r, precise)
+        nav.sauver()
+    r.dire(f"{len(lus)} waypoints lus dans l'avion." if lus else "Aucun waypoint lu.")
+
+
+def aller_wpt(r):
+    """Guidage vers le waypoint choisi dans la fenetre (r.nav.cible)."""
+    cible = r.nav.cible
+    if cible is None:
+        raise Echec("Aucun waypoint choisi.")
+    p = r.nav.par_numero(cible)
+    if p is not None and not p.sync:
+        envoyer_plan(r)
+    _aller_numero(r, cible, False)
     _guidage_wpt(r)
     r.attendre(0.8)
     r.dire(annonce_wpt(lire_hsi(r.export)))
@@ -517,18 +620,47 @@ def tacan_choisi(cfg, nav):
     return liste[nav.tacan]
 
 
-def regler_tacan(r):
+def _bloc_note(b):
+    return " ".join((b.lire(i) or "").strip() for i in (
+        "UFC_SCRATCHPAD_STRING_1_DISPLAY", "UFC_SCRATCHPAD_STRING_2_DISPLAY",
+        "UFC_SCRATCHPAD_NUMBER_DISPLAY")).upper()
+
+
+def _eteint(texte):
+    t = texte.replace(" ", "")
+    return "OFF" in t or t.startswith("OF")
+
+
+def ufc_allumer(r, bouton, nom):
+    """Fonction UFC (TCN, IFF, D/L, BCN) sur ON. Le bloc-notes de l'UFC affiche
+    ON ou OFF : on bascule si besoin, et on note ce qu'on a lu (boite noire)."""
+    _appuyer(r, bouton)
+    r.attendre(0.6)
+    avant = _bloc_note(r.b)
+    if "ON" in avant.replace(" ", "") and not _eteint(avant):
+        return True
+    _appuyer(r, "UFC_ONOFF")
+    r.attendre(0.6)
+    apres = _bloc_note(r.b)
+    ok = "ON" in apres.replace(" ", "") and not _eteint(apres)
+    if not ok and not _eteint(avant) and _eteint(apres):
+        _appuyer(r, "UFC_ONOFF")          # c'etait deja en marche : on remet
+        r.attendre(0.6)
+        apres = _bloc_note(r.b)
+        ok = not _eteint(apres)
+    if getattr(r, "boite", None) is not None:
+        r.boite.ecrire("ufc_marche", fonction=nom, avant=avant, apres=apres, ok=ok)
+    return ok
+
+
+def regler_tacan(r, pilote=False):
     t = tacan_choisi(r.cfg, r.nav)
     if t is None:
         raise Echec("Aucun canal TACAN enregistré. Ajoute-les dans la fenêtre.")
     canal = str(int(t.get("canal", 0)))
     bande = (t.get("bande") or "X").upper()
     mode = (t.get("mode") or "T/R").upper()
-    _appuyer(r, "UFC_TCN")
-    r.attendre(0.5)
-    if "OFF" in ((r.b.lire("UFC_SCRATCHPAD_STRING_1_DISPLAY") or "")
-                 + (r.b.lire("UFC_SCRATCHPAD_STRING_2_DISPLAY") or "")).upper().replace(" ", ""):
-        _appuyer(r, "UFC_ONOFF")
+    allume = ufc_allumer(r, "UFC_TCN", "TACAN")
     taper(r, canal)
     entrer(r)
     option_ufc(r, bande)
@@ -539,8 +671,12 @@ def regler_tacan(r):
         r.non_confirmes.append("canal TACAN")
         if getattr(r, "boite", None) is not None:
             r.boite.ecrire("tacan_non_confirme", voulu=t, lu=lu, options=options_ufc(r.b))
-    # guidage TACAN sur la HSI
+    if not allume:
+        r.non_confirmes.append("TACAN sur ON")
+    # guidage TACAN sur la HSI (possible seulement TACAN en marche)
+    info = None
     try:
+        r.attendre(1.5)
         info = _hsi(r)
         if not info["tcn_encadre"]:
             bouton_appris(r, "tcn", BOUTONS_HSI["tcn"],
@@ -548,11 +684,13 @@ def regler_tacan(r):
         r.attendre(2.0)
         info = lire_hsi(r.export)
     except Echec:
-        info = None
+        r.non_confirmes.append("guidage TACAN sur la HSI")
     texte = f"TACAN {canal} {bande}, {t.get('nom', '')}."
     if info and info["cap"] is not None and info["dist"]:
         texte += f" Cap {info['cap']:03d}, {info['dist']:.0f} nautiques."
     r.dire(texte)
+    if pilote:
+        _pilote("CPL", "Pilote auto couplé sur le TACAN.")(r)
 
 
 # ---------------------------------------------------------- pilote auto
@@ -566,13 +704,15 @@ def _pilote(libelle, message):
         r.attendre(0.4)
         if not option_ufc(r, libelle):
             raise Echec(f"Option {libelle} absente du pilote automatique.")
-        r.attendre(0.5)
+        r.attendre(1.0)
         if not option_choisie(r.b, libelle):
-            r.non_confirmes.append(f"pilote automatique {libelle}")
             if getattr(r, "boite", None) is not None:
                 r.boite.ecrire("pilote_auto_non_confirme", option=libelle,
                                options=options_ufc(r.b),
-                               reperes=[r.b.lire(f"UFC_OPTION_CUEING_{i}") for i in range(1, 6)])
+                               reperes=[r.b.lire(f"UFC_OPTION_CUEING_{i}") for i in range(1, 6)],
+                               vitesse=r.a.vitesse, altitude=r.a.altitude)
+            raise Echec("Pilote auto refusé. Avion stabilisé, ailes à plat, manche au neutre, "
+                        "puis réessaie.")
         r.dire(message)
     return action
 
@@ -641,14 +781,28 @@ def _sequence(r):
     r.dire(f"Waypoint {passe} passé. " + annonce_wpt(lire_hsi(r.export)))
 
 
+def _tacan_pilote(r):
+    regler_tacan(r, pilote=True)
+
+
+def systemes_nav(r):
+    """IFF et liaison de donnees (D/L) sur ON."""
+    rates = [nom for bouton, nom in (("UFC_IFF", "IFF"), ("UFC_DL", "D/L"))
+             if not ufc_allumer(r, bouton, nom)]
+    if rates:
+        r.non_confirmes.extend(rates)
+
+
 PROCEDURES_NAV = {
     "wpt_plus": ("Waypoint suivant", _proc(wpt_plus, "waypoint suivant")),
     "wpt_moins": ("Waypoint précédent", _proc(wpt_moins, "waypoint précédent")),
     "wpt_passe": ("Séquence waypoint", _proc(_sequence, "séquence waypoint")),
     "retour_base": ("Retour base", _proc(retour_base, "retour base")),
-    "point_wpt": ("Point vers waypoint", _proc(point_en_waypoint, "point vers waypoint")),
-    "aller_point": ("Aller au point", _proc(aller_au_point, "aller au point")),
+    "envoyer_plan": ("Envoi du plan de vol", _proc(envoyer_plan, "envoi du plan de vol")),
+    "lire_avion": ("Lecture des waypoints", _proc(lire_avion, "lecture des waypoints")),
+    "aller_wpt": ("Aller au waypoint", _proc(aller_wpt, "aller au waypoint")),
     "tacan": ("TACAN", _proc(regler_tacan, "TACAN")),
+    "tacan_ap": ("TACAN et pilote auto", _proc(_tacan_pilote, "TACAN et pilote auto")),
     "ap_balt": ("Pilote auto altitude", _proc(_pilote("BALT", "Pilote auto, maintien d'altitude."),
                                                "pilote auto BALT")),
     "ap_hsel": ("Pilote auto cap", _proc(_pilote("HSEL", "Pilote auto, maintien du cap sélecté."),
@@ -656,4 +810,5 @@ PROCEDURES_NAV = {
     "ap_cpl": ("Pilote auto couplé", _proc(_pilote("CPL", "Pilote auto couplé sur la navigation."),
                                            "pilote auto CPL")),
     "ap_off": ("Pilote auto off", _proc(pilote_off, "pilote auto off")),
+    "iff_dl": ("IFF et D/L", _proc(systemes_nav, "IFF et D/L")),
 }

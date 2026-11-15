@@ -114,8 +114,10 @@ def page_ecran(txt):
 
 
 class ExportDCS:
-    def __init__(self, port=7790):
+    def __init__(self, port=7790, port_ordres=7791):
         self.port = port
+        self.port_ordres = port_ordres
+        self._envoi = None
         self.dernier = 0.0
         self.erreur = ""
         self.ecrans = {}            # numero -> texte
@@ -123,9 +125,26 @@ class ExportDCS:
         self.leurres = None         # (paillettes, leurres IR)
         self.position = None        # avion : lat, lon, alt (m), cap (rad)
         self.vue = None             # centre de la vue / carte F10 : lat, lon, sol (m), haut (m)
+        self.args = {}              # position de quelques commandes du cockpit (argument DCS -> valeur)
         self._rwr = collections.deque(maxlen=40)   # (heure, tuple de symboles)
         self._verrou = threading.Lock()
         self._stop = False
+
+    # -------------------------------------------------------------- ordres
+    def clic(self, appareil, commande, valeur):
+        """Clic sur une commande du cockpit, par le lien (version 3 et plus)."""
+        if self._envoi is None:
+            self._envoi = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        msg = f"clic {int(appareil)} {int(commande)} {float(valeur):g}"
+        self._envoi.sendto(msg.encode(), ("127.0.0.1", self.port_ordres))
+
+    def arg(self, numero):
+        return self.args.get(numero)
+
+    @property
+    def ordres_possibles(self):
+        """Le lien installe sait-il recevoir des clics ? (il envoie alors 'args')"""
+        return self.vivant and bool(self.args)
 
     # -------------------------------------------------------------- etat
     @property
@@ -190,6 +209,8 @@ class ExportDCS:
             self.ecrans[7] = paquet.get("rwr") or ""
             self.position = paquet.get("pos") or None
             self.vue = paquet.get("vue") or None
+            if isinstance(paquet.get("args"), dict):
+                self.args = {int(k): float(v) for k, v in paquet["args"].items()}
             self.dernier = maintenant
         elif k == "ecran":
             try:
