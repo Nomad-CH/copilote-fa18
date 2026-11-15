@@ -61,6 +61,11 @@ def trouver_fenetre_dcs():
     import ctypes
     from ctypes import wintypes
     u, k = ctypes.windll.user32, ctypes.windll.kernel32
+    k.OpenProcess.restype = wintypes.HANDLE
+    k.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    k.CloseHandle.argtypes = (wintypes.HANDLE,)
+    k.QueryFullProcessImageNameW.argtypes = (wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+                                             ctypes.POINTER(wintypes.DWORD))
     trouvees = []
 
     def nom_programme(h):

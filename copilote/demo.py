@@ -403,14 +403,17 @@ class FausseNav:
     def page(self):
         if self.data:
             lat, lon = self.points.get(self.wypt, (0.0, 0.0))
-            t = "\x1fWYPT_Number\nWYPT %d\n\x1fPRECISE_1__id:25\nPRECISE\n" % self.wypt
+            # comme dans DCS : un waypoint vide n'affiche meme pas son numero
+            vide = self.wypt not in self.points
+            t = ("\x1fWYPT_Number\n\n" if vide else "\x1fWYPT_Number\nWYPT %d\n" % self.wypt)
+            t += "\x1fPRECISE_1__id:25\nPRECISE\n"
             if self.precise:
                 t += "\x1fPRECISE_1_box__id:26\n\n"
             if self.wypt in self.points:
                 t += "\x1fWYPT_Latitude\nN %d°%07.4f'\n" % (int(lat), (lat - int(lat)) * 60)
                 t += "\x1fWYPT_Longitude\nE %d°%07.4f'\n" % (int(lon), (lon - int(lon)) * 60)
                 t += "\x1fWYPT_Elev\n120FT\n"
-            t += "\x1fWYPT_SequenceData\n0- 1- 2\n"
+            t += "\x1fWYPT_SequenceData\n%s\n" % ("" if vide else "0- 1- 2")
             return t
         from .navigation import distance_cap
         lat, lon = self.points.get(self.wypt, (0.0, 0.0))

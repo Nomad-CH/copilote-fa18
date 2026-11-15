@@ -126,6 +126,7 @@ class ExportDCS:
         self.position = None        # avion : lat, lon, alt (m), cap (rad)
         self.vue = None             # centre de la vue / carte F10 : lat, lon, sol (m), haut (m)
         self.args = {}              # position de quelques commandes du cockpit (argument DCS -> valeur)
+        self.temps_modele = None    # horloge de la mission (repart de zero a chaque mission)
         self._rwr = collections.deque(maxlen=40)   # (heure, tuple de symboles)
         self._verrou = threading.Lock()
         self._stop = False
@@ -208,6 +209,8 @@ class ExportDCS:
             self.leurres = tuple(int(x) for x in l) if l else None
             self.ecrans[7] = paquet.get("rwr") or ""
             self.position = paquet.get("pos") or None
+            if isinstance(paquet.get("t"), (int, float)):
+                self.temps_modele = float(paquet["t"])
             self.vue = paquet.get("vue") or None
             if isinstance(paquet.get("args"), dict):
                 self.args = {int(k): float(v) for k, v in paquet["args"].items()}

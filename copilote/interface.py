@@ -68,6 +68,7 @@ class Interface:
     def __init__(self, cfg):
         self.cfg = cfg
         self.racine = tk.Tk()
+        self.racine.report_callback_exception = _erreur_fenetre
         self.racine.title(f"Copilote F/A-18  {__version__}")
         self.racine.configure(bg=FOND)
         self.racine.geometry("470x760")
@@ -181,10 +182,10 @@ class Interface:
         self.bl_plan = tk.Label(b, text="PLAN", bg=LIGNE, fg=VERT, font=self.p_petit, padx=6,
                                 cursor="hand2")
         self.bl_plan.pack(side="right", padx=8, pady=8)
-        self.bl_plan.bind("<Button-1>", lambda _e: self.ouvrir_plan())
+        self.bl_plan.bind("<Button-1>", lambda _e: (self.ouvrir_plan(), "break")[1])
         self.bl_message = tk.Label(b, text="", bg=FOND, fg=VERT, font=self.p_texte, anchor="w")
         self.bl_message.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        for w in (b, self.bl_message):
+        for w in (self.bl_etat, self.bl_message):
             w.bind("<Button-1>", lambda _e: self.changer_mode("pleine"))
         b.withdraw()
 
@@ -484,12 +485,9 @@ class Interface:
                                (t, 0, t, t - 8), (t, t + 8, t, 2 * t)):
             c.create_line(x0, y0, x1, y1, fill="#FF3B30", width=2)
         c.create_oval(t - 3, t - 3, t + 3, t + 3, outline="#FF3B30", width=2)
-        try:      # les clics traversent le viseur
-            import ctypes
-            h = ctypes.windll.user32.GetParent(v.winfo_id())
-            style = ctypes.windll.user32.GetWindowLongW(h, -20)
-            ctypes.windll.user32.SetWindowLongW(h, -20, style | 0x80000 | 0x20)
-        except Exception:
+        try:      # le viseur ne prend jamais les clics
+            v.attributes("-disabled", True)
+        except tk.TclError:
             pass
         self.app.dire("Viseur carte en place. Centre la carte F10 sur le point, puis prends le point.")
 
@@ -719,6 +717,11 @@ class ReglageEnvoi:
         self.f.destroy()
 
 
+def _erreur_fenetre(exc, val, tb):
+    import traceback
+    print("Erreur fenêtre :", "".join(traceback.format_exception(exc, val, tb)), flush=True)
+
+
 class PlanDeVol:
     """Plan de vol : les waypoints, d'ou qu'ils viennent (route de la mission lue
     dans l'avion, carte F10, position de l'avion, coordonnees tapees), puis
@@ -891,7 +894,11 @@ class PlanDeVol:
         self.lancer("aller_wpt")
 
     def prendre(self, avion):
-        p = self.app.prendre_point(avion, self.v_nom.get().strip()[:12])
+        try:
+            p = self.app.prendre_point(avion, self.v_nom.get().strip()[:12])
+        except Exception as ex:
+            self.app.boite.erreur("prendre un point", ex)
+            p = None
         if p is None:
             self.l_info.configure(text="Point non pris : ouvre la carte F10 (ou vérifie la liaison DCS).")
         else:

@@ -19,6 +19,12 @@ def _journal():
     f = open(JOURNAL, "a", encoding="utf-8", buffering=1)
     f.write(f"\n===== lancement {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n")
     sys.stdout = sys.stderr = f
+    # plantage brutal (pas d'exception Python) : la pile part quand meme au journal
+    try:
+        import faulthandler
+        faulthandler.enable(file=f, all_threads=True)
+    except Exception:
+        pass
 
 
 def _deja_lance():

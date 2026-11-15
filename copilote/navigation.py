@@ -155,12 +155,15 @@ class Carnet:
         self.choisi = 0
         self.tacan = 0
         self.cible = None          # numero vers lequel aller (fenetre)
-        self.fin_mission = 0.0     # heure de la fin du dernier vol
+        self.fin_mission = 0.0     # derniere heure ou la mission precedente tournait
+        self.t_modele = None       # horloge de cette mission (DCS), pour reperer une nouvelle mission
+        self._sauve_t = 0.0
         try:
             with open(chemin, encoding="utf-8") as f:
                 donnees = json.load(f)
             if isinstance(donnees, dict):
                 self.fin_mission = float(donnees.get("fin_mission", 0))
+                self.t_modele = donnees.get("t_modele")
                 donnees = donnees.get("points", [])
             for d in donnees:
                 self.points.append(Point(d["nom"], d["lat"], d["lon"], d.get("alt_m"),
@@ -173,11 +176,27 @@ class Carnet:
         self.fin_mission = time.time()
         self.sauver()
 
+    def horloge_mission(self, t):
+        """Appele chaque seconde avec l'horloge de la mission DCS. Si elle est
+        repartie en arriere, c'est une nouvelle mission -> renvoie le nombre de
+        waypoints de l'ancienne mission retires (sinon None)."""
+        retires = None
+        if self.t_modele is not None and t < self.t_modele - 30:
+            retires = self.nouvelle_mission()
+        self.t_modele = t
+        maintenant = time.time()
+        self.fin_mission = maintenant
+        if maintenant - self._sauve_t > 20:
+            self._sauve_t = maintenant
+            self.sauver()
+        return retires
+
     def nouvelle_mission(self):
         """Nouveau vol : les waypoints faits pour une mission precedente sont retires
         (ceux prepares depuis la fin du dernier vol restent)."""
         avant = len(self.points)
-        self.points = [p for p in self.points if p.cree > self.fin_mission]
+        limite = self.fin_mission
+        self.points = [p for p in self.points if p.cree > limite]
         for p in self.points:
             p.sync = False
         if len(self.points) != avant:
@@ -196,7 +215,8 @@ class Carnet:
         try:
             os.makedirs(os.path.dirname(self.chemin), exist_ok=True)
             with open(self.chemin, "w", encoding="utf-8") as f:
-                json.dump({"fin_mission": self.fin_mission, "points": [p.dict() for p in self.points]},
+                json.dump({"fin_mission": self.fin_mission, "t_modele": self.t_modele,
+                           "points": [p.dict() for p in self.points]},
                           f, ensure_ascii=False, indent=1)
         except OSError:
             pass
@@ -494,6 +514,7 @@ def entrer(r):
 def _ouvrir_data(r):
     """-> etat a remettre en sortant : (PRECISE etait encadre ?)"""
     info = _hsi(r)
+    r.nav.depart_data = info["wypt"]
     if not info["data"]:
         bouton_appris(r, "data", BOUTONS_HSI["data"], lambda a, b: b["data"])
         r.attendre(0.5)
@@ -517,18 +538,22 @@ def _fermer_data(r, precise_avant):
         pass
 
 
-def _aller_numero(r, cible, page_data):
+def _aller_numero(r, cible, page_data, depart=None):
+    """Va au waypoint `cible`. Sur un waypoint vide, la page DATA n'affiche rien
+    (pas meme le numero) : on compte alors les crans a partir du dernier numero lu."""
+    boutons = r.cfg.get("boutons_hsi", {})
+    suppose = depart
     for _ in range(120):
         d = _hsi(r)
         if d["data"] != page_data:
             r.attendre(0.4)
             d = _hsi(r)
         if d["wypt"] is None:
-            r.attendre(0.4)
+            r.attendre(0.3)
             d = _hsi(r)
-        if d["wypt"] is None:
-            # sur le waypoint 0 le numero n'est pas toujours affiche : un cran plus loin
-            boutons = r.cfg.get("boutons_hsi", {})
+        n = d["wypt"] if d["wypt"] is not None else suppose
+        if n is None:
+            # rien de lisible et aucun repere : un cran pour faire apparaitre un numero
             pb = boutons.get("data_wpt_plus" if page_data else "wpt_plus", 12)
             _appuyer(r, f"{_bouton(d)}{pb:02d}")
             r.attendre(0.8)
@@ -537,16 +562,27 @@ def _aller_numero(r, cible, page_data):
                 if getattr(r, "boite", None) is not None:
                     r.boite.ecrire("numero_illisible", texte=d["texte"][:20000])
                 raise Echec("Numéro de waypoint illisible.")
-        if d["wypt"] == cible:
+            continue
+        if n == cible:
             return d
-        pas = 1 if d["wypt"] < cible else -1
+        pas = 1 if n < cible else -1
+        if d["wypt"] is None:
+            # waypoint vide : appui sans verification possible, on compte
+            cle = ("data_wpt_plus" if pas > 0 else "data_wpt_moins") if page_data else \
+                ("wpt_plus" if pas > 0 else "wpt_moins")
+            defaut = 12 if pas > 0 else 13
+            _appuyer(r, f"{_bouton(d)}{boutons.get(cle, defaut):02d}")
+            r.attendre(0.5)
+            suppose = n + pas
+            continue
         if page_data:
             cle = "data_wpt_plus" if pas > 0 else "data_wpt_moins"
             cand = BOUTONS_DATA["wpt_plus" if pas > 0 else "wpt_moins"]
         else:
             cle = "wpt_plus" if pas > 0 else "wpt_moins"
             cand = BOUTONS_HSI[cle]
-        bouton_appris(r, cle, cand, _change_wpt(pas))
+        apres = bouton_appris(r, cle, cand, lambda a, b: b["wypt"] is None or _change_wpt(pas)(a, b))
+        suppose = apres["wypt"] if apres["wypt"] is not None else n + pas
     raise Echec(f"Waypoint {cible} inaccessible.")
 
 
@@ -592,7 +628,8 @@ def envoyer_plan(r):
     faits, rates = [], []
     try:
         for p in sorted(a_faire, key=lambda q: q.num):
-            _aller_numero(r, p.num, True)
+            _aller_numero(r, p.num, True, getattr(nav, "depart_data", None))
+            nav.depart_data = p.num
             if _ecrire(r, p):
                 p.sync = True
                 faits.append(p.num)
@@ -616,10 +653,15 @@ def lire_avion(r):
     lus = []
     try:
         d = _hsi(r)
+        if d["wypt"] is None and not d["route"]:
+            r.dire("Pas de route dans cette mission.")
+            return
         route = sorted(set([0] + (d["route"] or [])))
         route += [p.num for p in nav.points if p.num is not None and p.num not in route]
+        depart = getattr(nav, "depart_data", None)
         for num in sorted(set(route)):
-            d = _aller_numero(r, num, True)
+            d = _aller_numero(r, num, True, depart)
+            depart = num
             r.attendre(0.4)
             d = _hsi(r)
             if d["lat"] is None or d["lon"] is None or (abs(d["lat"]) < 0.01 and abs(d["lon"]) < 0.01):

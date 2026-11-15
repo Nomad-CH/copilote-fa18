@@ -123,3 +123,19 @@ class Navigation(unittest.TestCase):
         info = lire_hsi(X())
         self.assertEqual((info["wypt"], info["cap"], info["dist"]), (0, 121, 0.0))
         self.assertFalse(info["wypt_encadre"])
+
+
+class PlanDeVol(unittest.TestCase):
+    def test_nouvelle_mission(self):
+        import tempfile
+        import time as _t
+        from copilote.navigation import Carnet, Point
+        k = Carnet(os.path.join(tempfile.mkdtemp(), "plan.json"))
+        k.horloge_mission(500.0)
+        k.ajouter(Point("vieux", 1, 1))
+        k.horloge_mission(520.0)
+        _t.sleep(0.02)
+        k.ajouter(Point("prepare", 2, 2))        # prepare entre deux missions
+        self.assertEqual(k.horloge_mission(3.0), 1)
+        self.assertEqual([p.nom for p in k.points], ["prepare"])
+        self.assertIsNone(k.horloge_mission(4.0))

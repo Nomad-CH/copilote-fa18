@@ -354,15 +354,9 @@ class Copilote:
         if en_f18 and not self._etait_en_f18:
             self.dire(random.choice(ACCUEILS))
             threading.Thread(target=self._verifier_touches, daemon=True).start()
-            # nouveau vol (pas une simple coupure de quelques secondes)
-            if self.nav.fin_mission and maintenant - self.nav.fin_mission > 60:
-                retires = self.nav.nouvelle_mission()
-                if retires:
-                    self.dire(f"Plan de vol : {retires} waypoint{'s' if retires > 1 else ''} "
-                              "de l'ancienne mission retirés.")
         elif self._etait_en_f18 and not en_f18:
             self.message = "En attente de DCS."
-            self.nav.fin_de_vol()
+            self.nav.sauver()
         self._etait_en_f18 = en_f18
         if maintenant - self._dernier_surv > 0.25:
             self._dernier_surv = maintenant
@@ -373,6 +367,12 @@ class Copilote:
 
         if en_f18 and maintenant - self._dernier_suivi > 1.0 and self.export is not None:
             self._dernier_suivi = maintenant
+            t = self.export.temps_modele if self.export.vivant else None
+            if t is not None:
+                retires = self.nav.horloge_mission(t)
+                if retires:
+                    self.dire(f"Nouvelle mission : {retires} waypoint{'s' if retires > 1 else ''} "
+                              "de l'ancienne mission retirés du plan.")
             try:
                 self.suivi_wpt.tick(self.export, self.a, self.cfg, self.dire, self._wpt_passe)
             except Exception as ex:
