@@ -243,6 +243,9 @@ class Surveillance:
         avant, self._stations = self._stations, stations
         if avant is None:
             return
+        # au sol : l'equipe au sol change l'emport (rearmement), ce ne sont pas des tirs
+        if self.a.au_sol:
+            return
         baisses = [(st, avant[st][0]) for st in stations
                    if st in avant and stations[st][1] < avant[st][1]]
         # tout qui disparait d'un coup : avion perdu ou largage d'urgence, pas de "Fox"

@@ -1,6 +1,6 @@
-**Version 0.11.1** — corrections après ton vol du 15 novembre (15 h 30)
+**Version 0.12.0** — étape JDAM
 
-- Nouvelle mission repérée à l'horloge de DCS : les waypoints de l'ancienne mission sont retirés du plan tout seuls (ceux préparés entre deux vols restent).
-- Bouton PLAN de la barre : n'ouvre plus la grande fenêtre en plus.
-- Waypoints vides (mission sans route) : plus de « numéro illisible » en lecture ni en envoi.
-- Viseur carte et prise de point rendus plus sûrs ; en cas de plantage, la cause part au journal pour le diagnostic.
+- JDAM SUR WAYPOINT (TOO) : touche JDAM SUR WPT (page NAV) ou bouton dans le plan de vol. Le copilote guide vers le waypoint, le désigne comme cible (WPDSG), passe en air-sol, choisit la JDAM, met le mode TOO et la fusée INST. Master arm et largage restent à toi.
+- PROGRAMMER LA JDAM (PP, à l'essai) : la cible choisie dans le plan est entrée dans le PP voulu (1 à 6), pour chaque bombe.
+- Plus de « Bombe larguée » au sol pendant le réarmement.
+- « Train rentré, volets auto. » (sans « configuration lisse »).

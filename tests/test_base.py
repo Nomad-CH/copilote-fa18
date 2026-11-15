@@ -139,3 +139,23 @@ class PlanDeVol(unittest.TestCase):
         self.assertEqual(k.horloge_mission(3.0), 1)
         self.assertEqual([p.nom for p in k.points], ["prepare"])
         self.assertIsNone(k.horloge_mission(4.0))
+
+
+class Jdam(unittest.TestCase):
+    def test_pages_reelles(self):
+        from copilote.armement import lire_ddi, _dms
+        with open(os.path.join(RACINE, "tests", "pages_jdam_15nov.json"), encoding="utf-8") as f:
+            marques = json.load(f)
+
+        class X:
+            vivant = True
+
+            def __init__(self, ecrans):
+                self.ecrans = {int(k): v for k, v in ecrans.items()}
+        m1, m2, m3 = (lire_ddi(X(marques[n])) for n in ("1", "2", "3"))
+        self.assertTrue(m1["stores"] and not m1["jdam"])
+        self.assertTrue(m2["jdam"] and m2["mode"] == "PP" and m2["fusee"] == "OFF")
+        self.assertEqual(m3["mode"], "TOO")
+        self.assertEqual(lire_ddi(X(marques["4"]))["fusee"], "INST")
+        self.assertTrue(lire_ddi(X(marques["1"]), 3)["menu_tac"])
+        self.assertEqual(_dms(41.920094, True), ("2", "415512", "34"))

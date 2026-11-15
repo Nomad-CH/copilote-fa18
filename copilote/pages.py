@@ -341,7 +341,8 @@ def page_mission(app):
         _proc(app, "ap_cpl", "A/P\nSUIT NAV"),
         Touche("A/P\nOFF", "", ROUGE, lambda: app.ex.lancer("ap_off")),
 
-        VIDE, VIDE, VIDE, VIDE, VIDE,
+        _proc(app, "jdam_too", "JDAM\nSUR WPT"),
+        VIDE, VIDE, VIDE, VIDE,
         Touche("FENÊTRE", getattr(app, "mode_fenetre", "").upper(), GRIS,
                lambda: app.fenetre("suivante")),
     ] + _ligne_etat(app)

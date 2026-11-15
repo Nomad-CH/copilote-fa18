@@ -757,6 +757,17 @@ class PlanDeVol:
         Bouton(b, "SUPPRIMER", self.supprimer, ui.p_bouton).pack(side="left", padx=3)
         Bouton(b, "NOUVEAU PLAN", self.nouveau, ui.p_bouton).pack(side="left", padx=3)
 
+        b = tk.Frame(f, bg=FOND)
+        b.pack(pady=(4, 2))
+        Bouton(b, "JDAM SUR CE WAYPOINT (TOO)", self.jdam_too, ui.p_bouton).pack(side="left", padx=3)
+        self.v_pp = tk.StringVar(value="1")
+        m = tk.OptionMenu(b, self.v_pp, "1", "2", "3", "4", "5", "6")
+        m.configure(bg=PANNEAU, fg=VERT, activebackground=LIGNE, relief="flat",
+                    highlightthickness=0, font=ui.p_petit)
+        tk.Label(b, text="PP", bg=FOND, fg=PALE, font=ui.p_petit).pack(side="left", padx=(8, 2))
+        m.pack(side="left")
+        Bouton(b, "PROGRAMMER LA JDAM (PP, essai)", self.jdam_pp, ui.p_bouton).pack(side="left", padx=3)
+
         tk.Label(f, text="AJOUTER UN WAYPOINT", bg=FOND, fg=VERT, font=ui.p_petit).pack(pady=(10, 2))
         b = tk.Frame(f, bg=FOND)
         b.pack()
@@ -892,6 +903,21 @@ class PlanDeVol:
             return
         self.nav.cible = p.num
         self.lancer("aller_wpt")
+
+    def jdam_too(self):
+        p = self.nav.point
+        if p is None or p.num is None:
+            self.l_info.configure(text="Choisis la cible (un waypoint) dans la liste.", fg=AMBRE)
+            return
+        self.nav.cible = p.num
+        self.lancer("jdam_too")
+
+    def jdam_pp(self):
+        if self.nav.point is None:
+            self.l_info.configure(text="Choisis la cible dans la liste.", fg=AMBRE)
+            return
+        self.nav.pp = int(self.v_pp.get())
+        self.lancer("jdam_pp")
 
     def prendre(self, avion):
         try:

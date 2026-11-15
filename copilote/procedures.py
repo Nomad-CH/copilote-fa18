@@ -565,7 +565,7 @@ APRES_DECOLLAGE = [
     Attend(lambda a: not any(a.allume(i) for i in (
         "FLP_LG_NOSE_GEAR_LT", "FLP_LG_LEFT_GEAR_LT", "FLP_LG_RIGHT_GEAR_LT")),
         15, "train rentré", bloquant=False),
-    Dit("Train rentré, volets auto. Configuration lisse."),
+    Dit("Train rentré, volets auto."),
 ]
 
 FENCE_IN = [
@@ -788,3 +788,7 @@ class Executeur:
 # Etape 2 : navigation (waypoints, carnet de points, TACAN, pilote automatique)
 from .navigation import PROCEDURES_NAV  # noqa: E402
 PROCEDURES.update(PROCEDURES_NAV)
+
+# Etape JDAM
+from .armement import PROCEDURES_ARMES  # noqa: E402
+PROCEDURES.update(PROCEDURES_ARMES)

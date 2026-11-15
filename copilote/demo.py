@@ -293,6 +293,17 @@ class FausseNav:
         self.iff_on = self.dl_on = False
         self.frein = [1.0, 0.666]               # tiree, tournee (frein serre au depart)
         self.stations = {152: 0.0, 154: 0.0, 156: 0.0, 158: 0.0, 160: 0.0}
+        self.ddi = "hud"                        # DDI gauche : hud, menu, stores, jdam, efuz, dsply, msn
+        self.jdam_mode, self.fusee, self.pp, self.tgt = "PP", "OFF", 1, False
+        self.pp_saisies = []
+        try:
+            import json as _j
+            import os as _o
+            with open(_o.path.join(_o.path.dirname(__file__), "..", "tests",
+                                   "pages_jdam_15nov.json"), encoding="utf-8") as f:
+                self.pages = _j.load(f)
+        except OSError:
+            self.pages = None
         self.options("")
 
     def options(self, mode):
@@ -315,6 +326,12 @@ class FausseNav:
         self.lu = len(self.h.recu)
         for ident, arg in nouv:
             if arg != "1":
+                continue
+            if ident.startswith("LEFT_DDI_PB_"):
+                self._ddi(int(ident[-2:]))
+                continue
+            if ident == "AMPCD_PB_14" and not self.data:
+                self.tgt = True
                 continue
             if ident.startswith("AMPCD_PB_"):
                 pb = int(ident[-2:])
@@ -364,6 +381,8 @@ class FausseNav:
                 if self.data:
                     self.options("POSN")
             elif ident == "UFC_ENT":
+                if self.ufc_mode == "TGT":
+                    self.pp_saisies.append(self.saisie)
                 self.entrees.append(self.saisie)
                 if self.ufc_mode == "TCN":
                     self.canal = self.saisie
@@ -372,6 +391,52 @@ class FausseNav:
                 self._maj_point()
             elif ident.startswith("UFC_") and ident[4:].isdigit():
                 self.saisie += ident[4:]
+
+    def _ddi(self, pb):
+        p = self.ddi
+        if pb == 18:
+            self.ddi = "menu"
+        elif p == "menu" and pb == 5:
+            self.ddi = "stores"
+        elif p == "stores" and pb == 6:
+            self.ddi = "jdam"
+        elif p == "jdam" and pb == 5:
+            self.jdam_mode = "TOO" if self.jdam_mode == "PP" else "PP"
+        elif p == "jdam" and pb == 4:
+            self.ddi = "efuz"
+        elif p == "efuz" and pb == 3:
+            self.fusee, self.ddi = "INST", "jdam"
+        elif p == "jdam" and pb == 11:
+            self.ddi = "dsply"
+        elif p == "dsply" and pb == 4:
+            self.ddi = "msn"
+        elif p == "msn" and 6 <= pb <= 11:
+            self.pp = pb - 5
+        elif p == "msn" and pb == 14:
+            self.ufc_mode = "TGT"
+            self.opts = ["POSN", "", "ELEV", "", ""]
+            for i, o in enumerate(self.opts, 1):
+                self.h.txt(f"UFC_OPTION_DISPLAY_{i}", o)
+        elif p == "msn" and pb == 19:
+            self.ddi = "jdam"
+
+    def page_ddi(self):
+        pg = self.pages or {}
+        if self.ddi == "menu":
+            return pg.get("1", {}).get("3", "")
+        if self.ddi == "stores":
+            return pg.get("1", {}).get("2", "")
+        if self.ddi == "jdam":
+            t = pg.get("2" if self.jdam_mode == "PP" else "3", {}).get("2", "")
+            return t.replace("JDAM_EFUZ_Val\nOFF", "JDAM_EFUZ_Val\n" + self.fusee)
+        if self.ddi == "efuz":
+            return "\x1fOFF_1__id:5\nOFF\n\x1fINST_1__id:3\nINST\n"
+        if self.ddi == "dsply":
+            return "\x1fMSN_1__id:4\nMSN\n\x1fALGN_QUAL\nALN QUAL\n"
+        if self.ddi == "msn":
+            t = "".join("\x1fPP%d_1__id:%d\nPP%d\n" % (k, 5 + k, k) for k in range(1, 7))
+            return t + "\x1fPP%d_1_box__id:99\n\n" % self.pp
+        return "\x1fHUD_Main\n\n"
 
     def clic(self, appareil, commande, valeur):
         """Clic direct (lien version 3) : frein de parking et stations."""
@@ -420,7 +485,7 @@ class FausseNav:
         dist, cap = distance_cap(self.avion[0], self.avion[1], lat, lon)
         t = "\x1fHSI_Main_Root\n\n\x1fWYPT_Page_Number\n%d\n" % self.wypt
         t += "\x1fTRCData\n%03d°/ %5.1f\n\x1fGroundSpeed_TN_UP_Mode\n420G\n" % (cap, dist)
-        t += "\x1fWYPT_1__id:13\nW\nY\nP\nT\n"
+        t += "\x1fWYPT_1__id:13\n%s\n" % ("T\nG\nT" if self.tgt else "W\nY\nP\nT")
         if self.wypt_box:
             t += "\x1fWYPT_1_box__id:14\n\n"
         t += "\x1fTCN_1__id:6\nT\nC\nN\n"
@@ -456,6 +521,7 @@ def scenario_navigation(hornet, port=7790, stop=None, nav=None, port_ordres=None
                            **{str(k): v for k, v in nav.stations.items()}}}
         s.sendto(json.dumps(paquet).encode(), ("127.0.0.1", port))
         s.sendto(json.dumps({"k": "ecran", "i": 4, "txt": nav.page()}).encode(), ("127.0.0.1", port))
+        s.sendto(json.dumps({"k": "ecran", "i": 2, "txt": nav.page_ddi()}).encode(), ("127.0.0.1", port))
         time.sleep(0.1)
 
 
