@@ -486,7 +486,7 @@ def _demarrage(porte_avions):
         Regle("EJECTION_SEAT_ARMED", "ARMED"),
         Appelle(_regler_bingo, "réglage BINGO"),
         Dit("Deux moteurs au ralenti. Défenses en ligne : RWR, leurres, brouilleur en veille. "
-            "IFF et liaison de données en marche. Passage IFA automatique à QUAL OK. "
+            "IFF et Link 16 en marche. Passage IFA automatique à QUAL OK. "
             "Test FCS à ta charge."),
     ]
 

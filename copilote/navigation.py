@@ -877,10 +877,35 @@ def _tacan_pilote(r):
     regler_tacan(r, pilote=True)
 
 
+def link16(r):
+    """Link 16 (le datalink qui montre les ailiers) : D/L appuye DEUX fois sur l'UFC
+    (un seul appui = Link 4), puis ON/OFF maintenu (fiche Datalink du kneeboard)."""
+    _appuyer(r, "UFC_DL")
+    r.attendre(0.5)
+    _appuyer(r, "UFC_DL")
+    r.attendre(0.6)
+    avant = _bloc_note(r.b)
+    if "ON" in avant.replace(" ", "") and not _eteint(avant):
+        ok = True
+    else:
+        _appuyer(r, "UFC_ONOFF", 1.5)                  # appui maintenu
+        r.attendre(0.6)
+        apres = _bloc_note(r.b)
+        ok = "ON" in apres.replace(" ", "") and not _eteint(apres)
+        if getattr(r, "boite", None) is not None:
+            r.boite.ecrire("link16", avant=avant, apres=apres, ok=ok,
+                           options=options_ufc(r.b))
+    _appuyer(r, "UFC_CLR")
+    return ok
+
+
 def systemes_nav(r):
-    """IFF et liaison de donnees (D/L) sur ON."""
-    rates = [nom for bouton, nom in (("UFC_IFF", "IFF"), ("UFC_DL", "D/L"))
-             if not ufc_allumer(r, bouton, nom)]
+    """IFF et Link 16 sur ON."""
+    rates = []
+    if not ufc_allumer(r, "UFC_IFF", "IFF"):
+        rates.append("IFF")
+    if not link16(r):
+        rates.append("Link 16")
     if rates:
         r.non_confirmes.extend(rates)
 
