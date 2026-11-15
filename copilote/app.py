@@ -49,6 +49,7 @@ class Copilote:
         self.nb_messages = 0
         # demandes pour la fenetre (venant du Stream Deck, donc d'un autre fil)
         self.demandes_fenetre = queue.Queue()
+        self._verrou_leurres = threading.Lock()
         self.message = "Copilote prêt."
         self._touches = [None] * (COLS * RANGS)
         self._affiche = [None] * (COLS * RANGS)
@@ -70,33 +71,33 @@ class Copilote:
         threading.Thread(target=self._larguer, args=(sorte,), daemon=True).start()
 
     def _larguer(self, sorte):
-        """Le DISPENSER sur ON laisse l'ALE-47 en veille tant qu'on ne choisit pas un
-        mode (page EW) : rien ne part, c'est ce qui s'est passe le 15 nov. Sur BYPASS,
-        chaque appui largue 2 paillettes ou 2 leurres. Le copilote passe donc sur
-        BYPASS si ON ne donne rien."""
+        """Leurres : DISPENSER sur ON, et dans DCS il faut aussi le master arm et un
+        mode A/A ou A/G (constate par toi le 15 nov.). Sur BYPASS, plus rien ne partait."""
         from .avion import POS
-        b, x = self.b, self.export
-        mode = self.cfg.get("leurres_dispenser", "BYPASS")
-        if b.lire("CMSD_DISPENSE_SW") not in (POS["CMSD_DISPENSE_SW"]["ON"], POS["CMSD_DISPENSE_SW"]["BYPASS"]):
-            b.envoyer("CMSD_DISPENSE_SW", POS["CMSD_DISPENSE_SW"][mode])
-            time.sleep(0.4)
-        avant = x.leurres if (x is not None and x.vivant) else None
-        ok = self._appui_leurres(sorte, avant)
-        if ok is None:
+        if not self._verrou_leurres.acquire(blocking=False):
             return
-        if not ok and b.lire("CMSD_DISPENSE_SW") != POS["CMSD_DISPENSE_SW"]["BYPASS"]:
-            b.envoyer("CMSD_DISPENSE_SW", POS["CMSD_DISPENSE_SW"]["BYPASS"])
-            time.sleep(0.6)
-            avant = x.leurres or avant
+        try:
+            b, a, x = self.b, self.a, self.export
+            if b.lire("CMSD_DISPENSE_SW") != POS["CMSD_DISPENSE_SW"]["ON"]:
+                b.envoyer("CMSD_DISPENSE_SW", POS["CMSD_DISPENSE_SW"]["ON"])
+                time.sleep(0.4)
+            manque = []
+            if not a.arme:
+                manque.append("master arm")
+            if not (a.allume("MASTER_MODE_AA_LT") or a.allume("MASTER_MODE_AG_LT")):
+                manque.append("mode A/A ou A/G")
+            if manque:
+                self.dire("Leurres : " + " et ".join(manque) + " requis.")
+                return
+            avant = x.leurres if (x is not None and x.vivant) else None
             ok = self._appui_leurres(sorte, avant)
-            if ok:
-                self.cfg["leurres_dispenser"] = "BYPASS"
-                self.dire("DISPENSER sur BYPASS : deux leurres par appui.")
-        if not ok:
-            self.dire("Négatif, aucun largage.")
-            self.boite.ecrire("largage_sans_effet", leurre=sorte, leurres=avant,
-                              dispenser=b.lire("CMSD_DISPENSE_SW"),
-                              args=dict(x.args) if x is not None else None)
+            if ok is False:
+                self.dire("Négatif, aucun largage.")
+                self.boite.ecrire("largage_sans_effet", leurre=sorte, leurres=avant,
+                                  dispenser=b.lire("CMSD_DISPENSE_SW"),
+                                  args=dict(x.args) if x is not None else None)
+        finally:
+            self._verrou_leurres.release()
 
     def _appui_leurres(self, sorte, avant):
         """Un appui sur l'interrupteur de la manette. -> True/False, None si invérifiable."""

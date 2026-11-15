@@ -159,3 +159,20 @@ class Jdam(unittest.TestCase):
         self.assertEqual(lire_ddi(X(marques["4"]))["fusee"], "INST")
         self.assertTrue(lire_ddi(X(marques["1"]), 3)["menu_tac"])
         self.assertEqual(_dms(41.920094, True), ("2", "415512", "34"))
+
+    def test_page_msn_reelle(self):
+        from copilote.armement import lire_ddi
+        with open(os.path.join(RACINE, "tests", "pages_msn_15nov.json"), encoding="utf-8") as f:
+            pages = json.load(f)
+
+        class X:
+            vivant = True
+
+            def __init__(self, t):
+                self.ecrans = {2: t}
+        dsply, pp, too = (lire_ddi(X(pages[k])) for k in ("dsply", "msn1", "msn2"))
+        self.assertTrue(dsply["dsply"] and not dsply["msn_page"])
+        self.assertTrue(pp["msn_page"] and pp["mission"] == "PP1" and pp["station"] == 8)
+        self.assertEqual(too["station"], 2)
+        self.assertAlmostEqual(too["tgt_lat"], 31.509063, places=4)
+        self.assertAlmostEqual(too["tgt_lon"], 65.654772, places=4)

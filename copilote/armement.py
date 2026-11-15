@@ -54,16 +54,30 @@ def lire_ddi(export, ecran=DDI_G):
         "ecran": ecran, "texte": txt, "elements": el,
         "menu_tac": present("STORES") and present("RDR"),
         "stores": "Master_Arm_Status" in txt,
-        "jdam": "ALGN_QUAL" in txt,
+        "jdam": "ALGN_QUAL" in txt and "Master_Arm_Status" in txt,
         "jdam_type": jdam_type,
         "mode": "TOO" if present("TOO") else ("PP" if present("PP") else None),
         "fusee": (val("JDAM_EFUZ_Val") or "").strip(),
         "alignement": (val("ALGN_QUAL_Val") or "").strip(),
-        "msn": present("MSN") or any(re.match(r"PP[1-6]_", n) for n in noms),
-        "pp_page": any(re.match(r"PP[1-6]_", n) for n in noms),
-        "pp_encadre": [int(m.group(1)) for n in noms
-                       for m in [re.match(r"PP([1-6])_\d_box", n)] if m],
+        "dsply": "Miss_Type" in txt and "MISSION_Lbl" not in txt,
+        "msn_option": present("MSN"),
+        "msn_page": "MISSION_Lbl" in txt,
+        "mission": (val("MISSION_Type") or val("Miss_Type") or "").strip(),
+        "station": int((val("CurrStation_JDAM") or "0").strip() or 0),
+        "tgt_lat": _dms_lu(val("LAT_N_S"), val("LAT_Val")),
+        "tgt_lon": _dms_lu(val("LONG_W_E"), val("LONG_Val")),
     }
+
+
+def _dms_lu(h, texte):
+    """ "N", "31° 30' 32.63\"" -> 31.509063 """
+    if not texte:
+        return None
+    m = re.match(r"\s*(\d+)\s*°\s*(\d+)\s*'\s*([\d.]+)", texte)
+    if not m:
+        return None
+    v = int(m.group(1)) + int(m.group(2)) / 60 + float(m.group(3)) / 3600
+    return -v if (h or "").strip() in ("S", "W") else v
 
 
 def _ddi(r, ecran=DDI_G):
@@ -111,7 +125,7 @@ def _mode_air_sol(r):
     if not r.a.allume("MASTER_MODE_AG_LT"):
         _appuyer(r, "MASTER_MODE_AG", 0.3)
         r.attendre(0.8)
-    if not r.a.allume("MASTER_MODE_AG_LT"):
+    if not r.a.allume("MASTER_MODE_AG_LT") and not r.a.au_sol:
         raise Echec("Mode air-sol refusé.")
 
 
@@ -183,8 +197,6 @@ def _designer_waypoint(r):
 
 def jdam_too(r):
     """JDAM en TOO sur le waypoint du plan choisi (ou le waypoint actuel)."""
-    if r.a.au_sol:
-        raise Echec("Négatif. JDAM en vol uniquement.")
     cible = getattr(r.nav, "cible", None)
     if cible is not None:
         p = r.nav.par_numero(cible)
@@ -219,56 +231,111 @@ def _dms(valeur, est_lat):
     return touche, f"{d:02d}{m:02d}{s:02d}", f"{c:02d}"
 
 
-def jdam_pp(r):
-    """Programme la cible PP n (le point choisi dans le plan) dans les JDAM."""
-    p = r.nav.point
-    if p is None:
-        raise Echec("Choisis une cible dans le plan de vol.")
-    n_pp = max(1, min(6, int(getattr(r.nav, "pp", 1) or 1)))
-    _preparer(r, "PP")
-    # JDAM DSPLY puis MSN
+ORDRE_LARGAGE = (8, 2, 7, 3)        # ordre de largage des JDAM dans le Hornet
+
+
+def stations_jdam(export):
+    """{station: nom de la bombe} pour les JDAM a bord (emport reel)."""
+    out = {}
+    for st, (nom, n) in (export.stations() if export is not None else {}).items():
+        if n and "GBU-3" in nom:
+            out[st] = nom
+    return out
+
+
+def _page_msn(r):
+    """STORES -> JDAM DSPLY (PB11) -> MSN. L'option MSN n'apparait qu'une fois la
+    bombe sous tension depuis quelques secondes : on attend jusqu'a 45 s."""
     d = _ddi(r)
-    if not d["msn"]:
-        bouton_ddi(r, "jdam_dsply", (11,), lambda a, b: b["msn"] or b["texte"] != a["texte"])
+    if d["msn_page"]:
+        return d
+    if not d["dsply"]:
+        bouton_ddi(r, "jdam_dsply", (11,), lambda a, b: b["dsply"] or b["msn_page"])
+    fin = r.horloge() + 45
+    annonce = False
+    while r.horloge() < fin:
         d = _ddi(r)
-    if not d["pp_page"]:
-        bouton_ddi(r, "jdam_msn", (4,), lambda a, b: b["pp_page"])
-    stations = [st for st, (nom, n) in (r.export.stations() or {}).items()
-                if n and "GBU-3" in nom]
-    for k in range(max(1, len(stations))):
-        if n_pp not in _ddi(r)["pp_encadre"]:
-            bouton_ddi(r, f"pp{n_pp}", (5 + n_pp,), lambda a, b: n_pp in b["pp_encadre"]
-                       or a["texte"] != b["texte"])
-        _appuyer(r, f"{_pb(DDI_G)}14")                 # TGT UFC
+        if d["msn_page"]:
+            return d
+        try:
+            return bouton_ddi(r, "jdam_msn", (4,), lambda a, b: b["msn_page"], delai=1.5)
+        except Echec:
+            if not annonce:
+                r.dire("Bombe en mise en route. J'attends la page mission.")
+                annonce = True
+            r.attendre(4)
+    raise Echec("Page MSN inaccessible. Ouvre-la à la main (JDAM DSPLY puis MSN), puis réessaie.")
+
+
+def _station_msn(r, station):
+    for _ in range(6):
+        d = _ddi(r)
+        if d["station"] == station:
+            return d
+        bouton_ddi(r, "msn_step", (13,), lambda a, b: b["station"] != a["station"])
+    raise Echec(f"Station {station} introuvable avec STEP.")
+
+
+def _entrer_cible(r, p):
+    if "PP1" not in _ddi(r)["mission"]:
+        bouton_ddi(r, "pp1", (6,), lambda a, b: "PP1" in b["mission"])
+    _appuyer(r, f"{_pb(DDI_G)}14")                     # UFC TGT
+    r.attendre(0.6)
+    if not option_ufc(r, "POSN"):
+        raise Echec("UFC TGT : option POSN absente.")
+    for valeur, est_lat, lib in ((p.lat, True, "LAT"), (p.lon, False, "LON")):
+        option_ufc(r, lib, attendu=False)
+        touche, tete, cent = _dms(valeur, est_lat)
+        taper(r, touche)
+        taper(r, tete)
+        entrer(r)
+        taper(r, cent)
+        entrer(r)
+    _appuyer(r, "UFC_CLR")
+    if p.alt_m is not None:
+        _appuyer(r, f"{_pb(DDI_G)}14")
         r.attendre(0.6)
-        if not option_ufc(r, "POSN"):
-            raise Echec("TGT UFC : option POSN absente.")
-        for valeur, est_lat, lib in ((p.lat, True, "LAT"), (p.lon, False, "LON")):
-            option_ufc(r, lib, attendu=False)
-            touche, tete, cent = _dms(valeur, est_lat)
-            taper(r, touche)
-            taper(r, tete)
-            entrer(r)
-            taper(r, cent)
+        if option_ufc(r, "ELEV", attendu=False) and option_ufc(r, "FEET", attendu=False):
+            taper(r, str(max(1, int(round(p.alt_m * 3.28084)))))
             entrer(r)
         _appuyer(r, "UFC_CLR")
-        if p.alt_m is not None:
-            _appuyer(r, f"{_pb(DDI_G)}14")
-            r.attendre(0.6)
-            if option_ufc(r, "ELEV", attendu=False) and option_ufc(r, "FEET", attendu=False):
-                taper(r, str(max(1, int(round(p.alt_m * 3.28084)))))
-                entrer(r)
-            _appuyer(r, "UFC_CLR")
-        _appuyer(r, "UFC_CLR")
-        if getattr(r, "boite", None) is not None:
-            r.boite.ecrire("jdam_pp", pp=n_pp, station_index=k, point=p.dict(),
-                           msn=_ddi(r)["texte"][:20000])
-        if k < len(stations) - 1:
-            _appuyer(r, f"{_pb(DDI_G)}13")             # STEP : bombe suivante
-            r.attendre(0.8)
-    _appuyer(r, f"{_pb(DDI_G)}19")                     # retour
-    r.non_confirmes.append(f"coordonnées PP{n_pp} (à vérifier sur la page MSN)")
-    r.dire(f"PP{n_pp} programmé sur {p.nom}. Vérifie la page MSN. Largage à toi.")
+    _appuyer(r, "UFC_CLR")
+    r.attendre(0.8)
+    d = _ddi(r)
+    ok = (d["tgt_lat"] is not None and d["tgt_lon"] is not None
+          and abs(d["tgt_lat"] - p.lat) < 0.0003 and abs(d["tgt_lon"] - p.lon) < 0.0003)
+    if getattr(r, "boite", None) is not None:
+        r.boite.ecrire("jdam_cible", station=d["station"], point=p.dict(),
+                       relu=(d["tgt_lat"], d["tgt_lon"]), ok=ok, msn=d["texte"][:20000])
+    return ok
+
+
+def jdam_programmer(r):
+    """Programme chaque station JDAM sur son waypoint (fenetre : station -> waypoint)."""
+    plan = dict(getattr(r.nav, "jdam", {}) or {})
+    if not plan:
+        raise Echec("Choisis un waypoint pour au moins une station.")
+    a_bord = stations_jdam(r.export)
+    plan = {st: n for st, n in plan.items() if n is not None and (not a_bord or st in a_bord)}
+    if not plan:
+        raise Echec("Aucune de ces stations n'a de JDAM.")
+    for st, num in plan.items():
+        p = r.nav.par_numero(num)
+        if p is None:
+            raise Echec(f"Waypoint {num} absent du plan.")
+    _preparer(r, "PP")
+    _page_msn(r)
+    faits, rates = [], []
+    for st in sorted(plan, key=lambda s: ORDRE_LARGAGE.index(s) if s in ORDRE_LARGAGE else 9):
+        p = r.nav.par_numero(plan[st])
+        _station_msn(r, st)
+        (faits if _entrer_cible(r, p) else rates).append(st)
+    bouton_ddi(r, "msn_retour", (19,), lambda a, b: not b["msn_page"])
+    if rates:
+        r.non_confirmes.append("stations " + ", ".join(map(str, rates)))
+    textes = [f"station {st} sur {r.nav.par_numero(plan[st]).nom}" for st in faits]
+    r.dire("JDAM programmées : " + ", ".join(textes) + ". Largage dans l'ordre 8, 2, 7, 3. "
+           "Master arm et largage à toi." if textes else "Programmation JDAM non confirmée.")
 
 
 def _proc(fonction, quoi):
@@ -287,5 +354,5 @@ def _proc(fonction, quoi):
 
 PROCEDURES_ARMES = {
     "jdam_too": ("JDAM sur waypoint", _proc(jdam_too, "JDAM TOO")),
-    "jdam_pp": ("JDAM programmée", _proc(jdam_pp, "JDAM PP")),
+    "jdam_programmer": ("Programmation JDAM", _proc(jdam_programmer, "JDAM stations")),
 }

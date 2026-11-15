@@ -302,6 +302,10 @@ class FausseNav:
             with open(_o.path.join(_o.path.dirname(__file__), "..", "tests",
                                    "pages_jdam_15nov.json"), encoding="utf-8") as f:
                 self.pages = _j.load(f)
+            with open(_o.path.join(_o.path.dirname(__file__), "..", "tests",
+                                   "pages_msn_15nov.json"), encoding="utf-8") as f:
+                self.pages_msn = _j.load(f)
+            self.sta, self.cibles = 8, {}
         except OSError:
             self.pages = None
         self.options("")
@@ -378,6 +382,16 @@ class FausseNav:
                     self.h.txt(f"UFC_OPTION_CUEING_{i}", ":")
             elif ident == "UFC_CLR":
                 self.saisie = ""
+                s = self.pp_saisies
+                if self.ddi == "msn" and len(s) >= 4:
+                    try:
+                        lat = int(s[-4][1:3]) + int(s[-4][3:5]) / 60 + (int(s[-4][5:7]) + int(s[-3]) / 100) / 3600
+                        lo = s[-2][1:]
+                        lon = int(lo[:-4]) + int(lo[-4:-2]) / 60 + (int(lo[-2:]) + int(s[-1]) / 100) / 3600
+                        self.cibles[self.sta] = (lat, lon)
+                    except (ValueError, IndexError):
+                        pass
+                    self.pp_saisies = []
                 if self.data:
                     self.options("POSN")
             elif ident == "UFC_ENT":
@@ -410,6 +424,9 @@ class FausseNav:
             self.ddi = "dsply"
         elif p == "dsply" and pb == 4:
             self.ddi = "msn"
+        elif p == "msn" and pb == 13:
+            ordre = [8, 2, 7, 3]
+            self.sta = ordre[(ordre.index(self.sta) + 1) % 4]
         elif p == "msn" and 6 <= pb <= 11:
             self.pp = pb - 5
         elif p == "msn" and pb == 14:
@@ -432,10 +449,16 @@ class FausseNav:
         if self.ddi == "efuz":
             return "\x1fOFF_1__id:5\nOFF\n\x1fINST_1__id:3\nINST\n"
         if self.ddi == "dsply":
-            return "\x1fMSN_1__id:4\nMSN\n\x1fALGN_QUAL\nALN QUAL\n"
+            return self.pages_msn["dsply"]
         if self.ddi == "msn":
-            t = "".join("\x1fPP%d_1__id:%d\nPP%d\n" % (k, 5 + k, k) for k in range(1, 7))
-            return t + "\x1fPP%d_1_box__id:99\n\n" % self.pp
+            t = self.pages_msn["msn1"].replace("CurrStation_JDAM\n8", "CurrStation_JDAM\n%d" % self.sta)
+            c = self.cibles.get(self.sta)
+            if c:
+                def dms(v):
+                    dd = int(v); mm = int((v - dd) * 60); ss = ((v - dd) * 60 - mm) * 60
+                    return "%d° %02d' %05.2f\"" % (dd, mm, ss)
+                t += "\x1fLAT_N_S\nN\n\x1fLAT_Val\n%s\n\x1fLONG_W_E\nE\n\x1fLONG_Val\n%s\n" % (dms(c[0]), dms(c[1]))
+            return t
         return "\x1fHUD_Main\n\n"
 
     def clic(self, appareil, commande, valeur):

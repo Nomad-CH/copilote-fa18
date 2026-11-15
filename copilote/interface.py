@@ -722,6 +722,10 @@ def _erreur_fenetre(exc, val, tb):
     print("Erreur fenêtre :", "".join(traceback.format_exception(exc, val, tb)), flush=True)
 
 
+def ui_police(ui):
+    return ui.p_petit
+
+
 class PlanDeVol:
     """Plan de vol : les waypoints, d'ou qu'ils viennent (route de la mission lue
     dans l'avion, carte F10, position de l'avion, coordonnees tapees), puis
@@ -757,16 +761,16 @@ class PlanDeVol:
         Bouton(b, "SUPPRIMER", self.supprimer, ui.p_bouton).pack(side="left", padx=3)
         Bouton(b, "NOUVEAU PLAN", self.nouveau, ui.p_bouton).pack(side="left", padx=3)
 
+        # ---- JDAM : une station -> un waypoint
+        tk.Label(f, text="BOMBES JDAM", bg=FOND, fg=VERT, font=ui.p_petit).pack(pady=(10, 2))
+        self.cadre_jdam = tk.Frame(f, bg=FOND)
+        self.cadre_jdam.pack()
+        self.v_jdam = {}
         b = tk.Frame(f, bg=FOND)
         b.pack(pady=(4, 2))
-        Bouton(b, "JDAM SUR CE WAYPOINT (TOO)", self.jdam_too, ui.p_bouton).pack(side="left", padx=3)
-        self.v_pp = tk.StringVar(value="1")
-        m = tk.OptionMenu(b, self.v_pp, "1", "2", "3", "4", "5", "6")
-        m.configure(bg=PANNEAU, fg=VERT, activebackground=LIGNE, relief="flat",
-                    highlightthickness=0, font=ui.p_petit)
-        tk.Label(b, text="PP", bg=FOND, fg=PALE, font=ui.p_petit).pack(side="left", padx=(8, 2))
-        m.pack(side="left")
-        Bouton(b, "PROGRAMMER LA JDAM (PP, essai)", self.jdam_pp, ui.p_bouton).pack(side="left", padx=3)
+        Bouton(b, "PROGRAMMER LES JDAM", self.jdam_programmer, ui.p_bouton).pack(side="left", padx=3)
+        Bouton(b, "JDAM SUR LE WAYPOINT CHOISI (TOO)", self.jdam_too, ui.p_bouton).pack(side="left", padx=3)
+        self._jdam_signature = None
 
         tk.Label(f, text="AJOUTER UN WAYPOINT", bg=FOND, fg=VERT, font=ui.p_petit).pack(pady=(10, 2))
         b = tk.Frame(f, bg=FOND)
@@ -850,6 +854,7 @@ class PlanDeVol:
                tuple(tuple(sorted(t.items())) for t in self.ui.cfg.get("tacan") or []))
         if sig != self._signature:
             self.remplir()
+        self.remplir_jdam()
         en_cours = self.app.ex.en_cours
         a_envoyer = len(self.nav.a_envoyer())
         self.l_resume.configure(
@@ -912,12 +917,46 @@ class PlanDeVol:
         self.nav.cible = p.num
         self.lancer("jdam_too")
 
-    def jdam_pp(self):
-        if self.nav.point is None:
-            self.l_info.configure(text="Choisis la cible dans la liste.", fg=AMBRE)
+    def remplir_jdam(self):
+        """Une ligne par station JDAM a bord (sinon 8, 2, 7, 3), avec le waypoint vise."""
+        from .armement import ORDRE_LARGAGE, stations_jdam
+        a_bord = stations_jdam(self.app.export) if self.app.export is not None else {}
+        stations = [s for s in ORDRE_LARGAGE if s in a_bord] or list(ORDRE_LARGAGE)
+        choix = ["—"] + [f"{p.num} {p.nom}" for p in self.nav.points if p.num is not None]
+        sig = (tuple(stations), tuple(choix))
+        if sig == self._jdam_signature:
             return
-        self.nav.pp = int(self.v_pp.get())
-        self.lancer("jdam_pp")
+        self._jdam_signature = sig
+        for w in self.cadre_jdam.winfo_children():
+            w.destroy()
+        memo = getattr(self.nav, "jdam", {}) or {}
+        for k, st in enumerate(stations):
+            nom = a_bord.get(st, "JDAM").replace("(V)1/B", "")
+            tk.Label(self.cadre_jdam, text=f"STA {st}  {nom}", bg=FOND, fg=PALE,
+                     font=ui_police(self.ui)).grid(row=k // 2, column=(k % 2) * 2, padx=4, sticky="e")
+            v = self.v_jdam.get(st) or tk.StringVar(value="—")
+            if memo.get(st) is not None:
+                for c in choix:
+                    if c.split(" ")[0] == str(memo[st]):
+                        v.set(c)
+            if v.get() not in choix:
+                v.set("—")
+            self.v_jdam[st] = v
+            m = tk.OptionMenu(self.cadre_jdam, v, *choix)
+            m.configure(bg=PANNEAU, fg=VERT, activebackground=LIGNE, relief="flat",
+                        highlightthickness=0, font=self.ui.p_petit, width=14)
+            m.grid(row=k // 2, column=(k % 2) * 2 + 1, padx=4, pady=1, sticky="w")
+
+    def jdam_programmer(self):
+        plan = {}
+        for st, v in self.v_jdam.items():
+            if v.get() != "—":
+                plan[st] = int(v.get().split(" ")[0])
+        if not plan:
+            self.l_info.configure(text="Choisis un waypoint pour au moins une station.", fg=AMBRE)
+            return
+        self.nav.jdam = plan
+        self.lancer("jdam_programmer")
 
     def prendre(self, avion):
         try:

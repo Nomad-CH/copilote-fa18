@@ -1,6 +1,6 @@
-**Version 0.12.0** — étape JDAM
+**Version 0.13.0** — JDAM station par station, leurres
 
-- JDAM SUR WAYPOINT (TOO) : touche JDAM SUR WPT (page NAV) ou bouton dans le plan de vol. Le copilote guide vers le waypoint, le désigne comme cible (WPDSG), passe en air-sol, choisit la JDAM, met le mode TOO et la fusée INST. Master arm et largage restent à toi.
-- PROGRAMMER LA JDAM (PP, à l'essai) : la cible choisie dans le plan est entrée dans le PP voulu (1 à 6), pour chaque bombe.
-- Plus de « Bombe larguée » au sol pendant le réarmement.
-- « Train rentré, volets auto. » (sans « configuration lisse »).
+- Plan de vol, section BOMBES JDAM : pour chaque station (8, 2, 7, 3), choisis le waypoint visé, puis PROGRAMMER LES JDAM. Le copilote ouvre la page MSN, passe de station en station (STEP), entre la cible en PP1 et relit les coordonnées sur la page MSN.
+- La page MSN n'apparaît qu'après la mise en route de la bombe : le copilote attend (jusqu'à 45 s).
+- JDAM SUR LE WAYPOINT CHOISI (TOO) : possible aussi au sol.
+- Leurres : DISPENSER sur ON (plus de BYPASS). Le copilote te dit s'il manque le master arm ou le mode A/A / A/G. Un appui à la fois.
