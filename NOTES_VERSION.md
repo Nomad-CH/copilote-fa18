@@ -1,13 +1,11 @@
-**Version 0.10.0** — corrections après ton vol du 15 novembre (après-midi)
+**Version 0.11.0** — corrections après ton vol du 15 novembre (14 h 40)
 
-- Liaison DCS version 3 : le copilote peut cliquer directement sur les commandes que DCS-BIOS manœuvre mal. Relance ta mission après la mise à jour.
-- Frein de parking et boutons de station (largage sélectif) : clic direct, vérifié, la bonne façon est retenue.
-- RWR : état lu sur le vrai voyant POWER, allumé et vérifié au démarrage.
-- Leurres : correction d'un bug qui coupait la vérification ; clic direct en secours.
-- Brouilleur et DISPENSER : positions corrigées.
-- IFF et liaison de données (D/L) mis en marche au démarrage.
-- TACAN : mise en marche (ON) vérifiée ; nouvelle touche TACAN + A/P (pilote auto qui suit le TACAN).
-- Pilote auto : si l'avion refuse, le copilote le dit.
-- PLAN DE VOL : nouvelle fenêtre (bouton PLAN sur la barre) : lire les waypoints de l'avion, ajouter depuis la carte F10, la position de l'avion ou des coordonnées, ENVOYER À L'AVION, Y ALLER, canaux TACAN.
-- Page NAV du Stream Deck simplifiée.
-- Avertissement si le logiciel Stream Deck d'Elgato est ouvert.
+- Frein de parking : nouvelles façons de le serrer (tourner sur PARK, puis tirer). Relâcher marchait déjà.
+- RWR : état lu sur le bouton POWER lui-même, allumé une fois les deux génératrices en ligne, revérifié à « Avion prêt ».
+- Leurres : le DISPENSER sur ON laisse l'ALE-47 en veille. Le copilote met le DISPENSER sur BYPASS (2 leurres par appui).
+- IFF : bien reconnu en marche (affichage XP).
+- Plan de vol : la fenêtre se comporte comme la barre (même coin, la barre revient quand on ferme) ; nom pour les points de carte ; RENOMMER ; NOUVEAU PLAN ; les waypoints de l'ancienne mission sont retirés au vol suivant.
+- Waypoint 0 sur la HSI : plus de « numéro illisible ».
+- TACAN : suppression des canaux réparée ; guidage TCN réessayé avec un appui plus long ; TACAN + A/P ne couple que si le TCN est encadré.
+- Pilote auto : second essai si l'option n'apparaît pas tout de suite.
+- Liaison DCS : relance ta mission après la mise à jour.

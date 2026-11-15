@@ -22,6 +22,9 @@ STATIONS = {   # bouton DCS-BIOS -> (appareil, commande, argument du voyant)
     "SJ_RI": (23, 3008, 158), "SJ_RO": (23, 3009, 160),
 }
 ARG_RWR_VOYANT = 276
+ARG_RWR_BOUTON = 277      # bouton POWER enfonce (verrouille) = RWR en marche
+ARG_RWR_INTENSITE = 216
+RWR_APPAREIL, RWR_POWER = 53, 3001
 
 
 def frein_serre(x):
@@ -32,10 +35,17 @@ def frein_serre(x):
     return tire > 0.5 and tourne > 0.66
 
 
+# Releve le 15 nov. : frein serre = tiree 1.0 et tournee 0.666 ; relache = tiree 0.5,
+# tournee 0. Relacher marche (facon 1). Pour serrer, la rotation seule a marche avec
+# la sequence DCS-BIOS (urgence 0, park 0, park 1) ; il faut ensuite TIRER : on essaie
+# clic, clic + relache, molette (petits pas), valeur negative.
+_TOURNER_PARK = [(FREIN_URGENCE, 0, 0.1), (FREIN_PARK, 0, 0.1), (FREIN_PARK, 1, 0.6)]
 FREIN_SERRER = [
-    [(FREIN_PARK, 1, 0.4), (FREIN_PARK, 0, 0.4), (FREIN_TIRER, 1, 0.3), (FREIN_TIRER, 0, 0.6)],
-    [(FREIN_PARK, 1, 0.5), (FREIN_TIRER, 1, 0.5), (FREIN_TIRER, 0, 0.5), (FREIN_PARK, 0, 0.4)],
-    [(FREIN_PARK, 1, 0.5), (FREIN_TIRER, -1, 0.3), (FREIN_TIRER, 0, 0.6)],
+    _TOURNER_PARK + [(FREIN_TIRER, 1, 0.8)],
+    _TOURNER_PARK + [(FREIN_TIRER, 1, 0.3), (FREIN_TIRER, 0, 0.8)],
+    _TOURNER_PARK + [(FREIN_TIRER, 0.1, 0.1)] * 6 + [(FREIN_TIRER, 0, 0.5)],
+    _TOURNER_PARK + [(FREIN_TIRER, -1, 0.3), (FREIN_TIRER, 0, 0.8)],
+    _TOURNER_PARK + [(FREIN_TIRER, 1.0, 0.2), (FREIN_PARK, 0, 0.8)],
 ]
 FREIN_RELACHER = [
     [(FREIN_TIRER, 1, 0.3), (FREIN_TIRER, 0, 0.8)],
@@ -116,7 +126,20 @@ def basculer_station(x, cfg, boite, b, bouton):
 
 
 def rwr_allume(x, b):
-    v = x.arg(ARG_RWR_VOYANT) if x is not None else None
+    """Bouton POWER de l'ALR-67 enfonce. (Le voyant 276 restait allume RWR eteint.)"""
+    v = x.arg(ARG_RWR_BOUTON) if x is not None else None
     if v is not None:
-        return v > 0.3
-    return bool(b.lire("RWR_LOWER_LT"))
+        return v > 0.5
+    return None
+
+
+def allumer_rwr(x, cfg, boite):
+    """-> True / False, None si le lien ne sait pas cliquer."""
+    if x is None or not x.ordres_possibles or x.arg(ARG_RWR_BOUTON) is None:
+        return None
+    if rwr_allume(x, None):
+        return True
+    return recettes(x, cfg, boite, "rwr_power",
+                    [[(RWR_POWER, 1, 0.3), (RWR_POWER, 0, 0.5)], [(RWR_POWER, 1, 0.6)]],
+                    RWR_APPAREIL, lambda: rwr_allume(x, None) is True, attente=3,
+                    numeros=(ARG_RWR_VOYANT, ARG_RWR_BOUTON, ARG_RWR_INTENSITE))

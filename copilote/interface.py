@@ -423,6 +423,8 @@ class Interface:
         ReglageEnvoi(self)
 
     def ouvrir_plan(self):
+        """Comme la barre : toujours au-dessus, dans le meme coin ; la barre
+        s'efface pendant que le plan est ouvert et revient quand on le ferme."""
         p = getattr(self, "plan", None)
         try:
             if p is not None and p.f.winfo_exists():
@@ -431,7 +433,15 @@ class Interface:
                 return
         except tk.TclError:
             pass
+        self._mode_avant_plan = self.mode
+        if self.mode == "barre":
+            self.barre.withdraw()
         self.plan = PlanDeVol(self)
+
+    def plan_ferme(self):
+        self.plan = None
+        if getattr(self, "_mode_avant_plan", None) == "barre":
+            self.changer_mode("barre")
 
     # ------------------------------------------------------- viseur carte F10
     def basculer_viseur(self):
@@ -722,6 +732,8 @@ class PlanDeVol:
         f.title("Plan de vol")
         f.configure(bg=FOND)
         f.attributes("-topmost", True)
+        f.protocol("WM_DELETE_WINDOW", self.fermer)
+        f.bind("<Escape>", lambda _e: self.fermer())
 
         tk.Label(f, text="PLAN DE VOL", bg=FOND, fg=VERT, font=ui.p_titre).pack(pady=(10, 0))
         self.l_resume = tk.Label(f, text="", bg=FOND, fg=PALE, font=ui.p_petit)
@@ -738,7 +750,9 @@ class PlanDeVol:
         Bouton(b, "LIRE L'AVION", lambda: self.lancer("lire_avion"), ui.p_bouton).pack(side="left", padx=3)
         Bouton(b, "ENVOYER À L'AVION", lambda: self.lancer("envoyer_plan"), ui.p_bouton).pack(side="left", padx=3)
         Bouton(b, "Y ALLER", self.y_aller, ui.p_bouton).pack(side="left", padx=3)
+        Bouton(b, "RENOMMER", self.renommer, ui.p_bouton).pack(side="left", padx=3)
         Bouton(b, "SUPPRIMER", self.supprimer, ui.p_bouton).pack(side="left", padx=3)
+        Bouton(b, "NOUVEAU PLAN", self.nouveau, ui.p_bouton).pack(side="left", padx=3)
 
         tk.Label(f, text="AJOUTER UN WAYPOINT", bg=FOND, fg=VERT, font=ui.p_petit).pack(pady=(10, 2))
         b = tk.Frame(f, bg=FOND)
@@ -756,8 +770,9 @@ class PlanDeVol:
                      insertbackground=VERT, relief="flat", font=ui.p_texte, highlightthickness=1,
                      highlightbackground=LIGNE).pack(side="left", padx=(0, 6))
         Bouton(ligne, "AJOUTER", self.ajouter, ui.p_bouton).pack(side="left")
-        tk.Label(f, text="Ex. : N 41°55'12\" E 041°51'30\"  ·  N41 55.200 E041 51.500  ·  41.92, 41.86"
-                 "   (N° vide = numéro suivant)", bg=FOND, fg=GRIS, font=ui.p_petit).pack()
+        tk.Label(f, text="Ex. : N 41°55'12\" E 041°51'30\"  ·  N41 55.200 E041 51.500  ·  41.92, 41.86\n"
+                 "N° vide = numéro suivant.  Le nom sert aussi pour la carte F10 et la position.",
+                 bg=FOND, fg=GRIS, font=ui.p_petit, justify="center").pack()
         self.l_info = tk.Label(f, text="", bg=FOND, fg=AMBRE, font=ui.p_petit, wraplength=600)
         self.l_info.pack(pady=2)
 
@@ -791,7 +806,24 @@ class PlanDeVol:
                  bg=FOND, fg=GRIS, font=ui.p_petit).pack(pady=(0, 8))
         self._signature = None
         self.remplir()
+        self._placer()
         self._rafraichir()
+
+    def _placer(self):
+        """Dans le coin de la barre."""
+        self.f.update_idletasks()
+        lf, hf = self.f.winfo_reqwidth(), self.f.winfo_reqheight()
+        el, eh = self.f.winfo_screenwidth(), self.f.winfo_screenheight()
+        coin = COINS[self.ui.coin]
+        x = 20 if "gauche" in coin else el - lf - 20
+        y = 20 if "haut" in coin else max(0, eh - hf - 70)
+        self.f.geometry(f"+{x}+{y}")
+
+    def fermer(self):
+        try:
+            self.f.destroy()
+        finally:
+            self.ui.plan_ferme()
 
     # ------------------------------------------------------------- affichage
     def _rafraichir(self):
@@ -827,10 +859,13 @@ class PlanDeVol:
         if self.nav.points:
             self.liste.selection_set(min(choisi, len(self.nav.points) - 1))
         self.l_tacan.delete(0, "end")
-        for k, t in enumerate(self.ui.cfg.get("tacan") or []):
+        liste = self.ui.cfg.get("tacan") or []
+        for k, t in enumerate(liste):
             marque = "▶" if k == self.nav.tacan else " "
             self.l_tacan.insert("end", f"{marque} {t.get('canal'):>3}{t.get('bande', 'X')}  "
                                 f"{t.get('mode', 'T/R'):<4} {t.get('nom', '')}")
+        if liste:
+            self.l_tacan.selection_set(min(self.nav.tacan, len(liste) - 1))
 
     # ---------------------------------------------------------------- actions
     def lancer(self, cle):
@@ -856,13 +891,31 @@ class PlanDeVol:
         self.lancer("aller_wpt")
 
     def prendre(self, avion):
-        p = self.app.prendre_point(avion)
+        p = self.app.prendre_point(avion, self.v_nom.get().strip()[:12])
         if p is None:
             self.l_info.configure(text="Point non pris : ouvre la carte F10 (ou vérifie la liaison DCS).")
         else:
+            self.v_nom.set("")
             self.l_info.configure(text=f"{p.nom} ajouté en waypoint {p.num}. ENVOYER À L'AVION pour l'écrire.",
                                   fg=VERT)
         self.remplir()
+
+    def renommer(self):
+        p = self.nav.point
+        nom = self.v_nom.get().strip()[:12]
+        if p is None or not nom:
+            self.l_info.configure(text="Choisis un waypoint et tape son nouveau nom dans « Nom ».", fg=AMBRE)
+            return
+        p.nom = nom
+        self.nav.sauver()
+        self.v_nom.set("")
+        self.remplir()
+
+    def nouveau(self):
+        if messagebox.askyesno("Nouveau plan", "Vider le plan de vol du copilote ?\n"
+                               "(Les waypoints déjà dans l'avion n'y sont pas effacés.)", parent=self.f):
+            self.nav.effacer()
+            self.remplir()
 
     def ajouter(self):
         from .navigation import Point, lire_coordonnees
@@ -915,9 +968,10 @@ class PlanDeVol:
         self.remplir()
 
     def supprimer_tacan(self):
-        s = self.l_tacan.curselection()
         liste = self.ui.cfg.get("tacan") or []
-        if s and s[0] < len(liste):
-            del liste[s[0]]
+        k = self.nav.tacan
+        if 0 <= k < len(liste):
+            del liste[k]
+            self.nav.tacan = max(0, k - 1)
             sauver_config(self.ui.cfg)
             self.remplir()

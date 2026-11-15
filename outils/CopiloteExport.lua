@@ -16,7 +16,7 @@ local CE = {
 	taille_max = 60000,
 	port_ordres = 7791,
 	-- commandes du cockpit dont on renvoie la position (numeros d'argument DCS)
-	suivis = { 240, 241, 276, 277, 488, 517, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161 },
+	suivis = { 240, 241, 276, 277, 216, 488, 517, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161 },
 }
 
 package.path = package.path .. ";.\\LuaSocket\\?.lua"

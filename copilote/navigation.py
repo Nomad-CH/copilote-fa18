@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import time
 
 from .exportdcs import elements
 
@@ -28,7 +29,7 @@ BOUTONS_HSI = {
     "wpt_plus": (12, 13),
     "wpt_moins": (13, 12),
     "wypt": (11,),
-    "tcn": (5, 4, 3),
+    "tcn": (5,),             # TCN a marche le 15 nov. (14 h 58)
     "data": (10,),
 }
 BOUTONS_DATA = {
@@ -46,7 +47,8 @@ class Echec(Exception):
 class Point:
     """Un waypoint du plan de vol. num = numero dans l'avion ; sync = deja dans l'avion."""
 
-    def __init__(self, nom, lat, lon, alt_m=None, source="", num=None, sync=False):
+    def __init__(self, nom, lat, lon, alt_m=None, source="", num=None, sync=False, cree=None):
+        self.cree = time.time() if cree is None else float(cree)
         self.nom, self.lat, self.lon = nom, float(lat), float(lon)
         self.alt_m = None if alt_m is None else float(alt_m)
         self.source = source
@@ -55,7 +57,7 @@ class Point:
 
     def dict(self):
         return {"nom": self.nom, "lat": self.lat, "lon": self.lon, "alt_m": self.alt_m,
-                "source": self.source, "num": self.num, "sync": self.sync}
+                "source": self.source, "num": self.num, "sync": self.sync, "cree": self.cree}
 
     def texte(self):
         return f"{ddm(self.lat, True)}  {ddm(self.lon, False)}"
@@ -153,14 +155,39 @@ class Carnet:
         self.choisi = 0
         self.tacan = 0
         self.cible = None          # numero vers lequel aller (fenetre)
+        self.fin_mission = 0.0     # heure de la fin du dernier vol
         try:
             with open(chemin, encoding="utf-8") as f:
-                for d in json.load(f):
-                    self.points.append(Point(d["nom"], d["lat"], d["lon"], d.get("alt_m"),
-                                             d.get("source", ""), d.get("num"), False))
+                donnees = json.load(f)
+            if isinstance(donnees, dict):
+                self.fin_mission = float(donnees.get("fin_mission", 0))
+                donnees = donnees.get("points", [])
+            for d in donnees:
+                self.points.append(Point(d["nom"], d["lat"], d["lon"], d.get("alt_m"),
+                                         d.get("source", ""), d.get("num"), False, d.get("cree", 0)))
         except (OSError, ValueError, KeyError, TypeError):
             pass
         self.trier()
+
+    def fin_de_vol(self):
+        self.fin_mission = time.time()
+        self.sauver()
+
+    def nouvelle_mission(self):
+        """Nouveau vol : les waypoints faits pour une mission precedente sont retires
+        (ceux prepares depuis la fin du dernier vol restent)."""
+        avant = len(self.points)
+        self.points = [p for p in self.points if p.cree > self.fin_mission]
+        for p in self.points:
+            p.sync = False
+        if len(self.points) != avant:
+            self.sauver()
+        return avant - len(self.points)
+
+    def effacer(self):
+        self.points = []
+        self.choisi = 0
+        self.sauver()
 
     def trier(self):
         self.points.sort(key=lambda p: (p.num is None, p.num or 0))
@@ -169,7 +196,8 @@ class Carnet:
         try:
             os.makedirs(os.path.dirname(self.chemin), exist_ok=True)
             with open(self.chemin, "w", encoding="utf-8") as f:
-                json.dump([p.dict() for p in self.points], f, ensure_ascii=False, indent=1)
+                json.dump({"fin_mission": self.fin_mission, "points": [p.dict() for p in self.points]},
+                          f, ensure_ascii=False, indent=1)
         except OSError:
             pass
 
@@ -314,11 +342,12 @@ def bouton_appris(r, cle, candidats, condition, delai=2.5):
     Le numero qui marche est retenu dans les reglages (comme STD HDG)."""
     from .chemins import sauver_config
     connus = r.cfg.setdefault("boutons_hsi", {})
-    essais = [connus[cle]] if cle in connus else list(candidats)
-    for pb in essais:
+    essais = ([connus[cle]] if cle in connus else []) + [c for c in candidats if c != connus.get(cle)]
+    # deuxieme passage avec un appui plus long (l'AMPCD rate parfois un appui bref)
+    for pb, duree in [(p, 0.2) for p in essais] + [(p, 0.5) for p in essais]:
         avant = _hsi(r)
         ident = f"{_bouton(avant)}{pb:02d}"
-        _appuyer(r, ident)
+        _appuyer(r, ident, duree)
         fin = r.horloge() + delai
         while r.horloge() < fin:
             apres = lire_hsi(r.export)
@@ -335,8 +364,8 @@ def bouton_appris(r, cle, candidats, condition, delai=2.5):
             apres = lire_hsi(r.export)
             r.boite.ecrire("bouton_hsi_sans_effet", cle=cle, bouton=ident,
                            texte=(apres or avant)["texte"][:20000])
-        if cle in connus:          # le bouton retenu ne marche plus : on reapprendra
-            del connus[cle]
+    if cle in connus:          # le bouton retenu ne marche plus : on reapprendra
+        del connus[cle]
     raise Echec("Bouton " + cle.replace("_", " ") + " sans effet.")
 
 
@@ -371,7 +400,8 @@ def _choisir_wpt(r, pas):
     if info["data"]:
         raise Echec("Page DATA ouverte. Reviens sur la HSI.")
     if info["wypt"] is None:
-        raise Echec("Numéro de waypoint illisible.")
+        _aller_numero(r, 1, False)
+        info = _hsi(r)
     cle = "wpt_plus" if pas > 0 else "wpt_moins"
     apres = bouton_appris(r, cle, BOUTONS_HSI[cle], _change_wpt(pas))
     _guidage_wpt(r)
@@ -496,7 +526,16 @@ def _aller_numero(r, cible, page_data):
         if d["wypt"] is None:
             r.attendre(0.4)
             d = _hsi(r)
+        if d["wypt"] is None:
+            # sur le waypoint 0 le numero n'est pas toujours affiche : un cran plus loin
+            boutons = r.cfg.get("boutons_hsi", {})
+            pb = boutons.get("data_wpt_plus" if page_data else "wpt_plus", 12)
+            _appuyer(r, f"{_bouton(d)}{pb:02d}")
+            r.attendre(0.8)
+            d = _hsi(r)
             if d["wypt"] is None:
+                if getattr(r, "boite", None) is not None:
+                    r.boite.ecrire("numero_illisible", texte=d["texte"][:20000])
                 raise Echec("Numéro de waypoint illisible.")
         if d["wypt"] == cible:
             return d
@@ -642,7 +681,8 @@ def ufc_allumer(r, bouton, nom):
     _appuyer(r, "UFC_ONOFF")
     r.attendre(0.6)
     apres = _bloc_note(r.b)
-    ok = "ON" in apres.replace(" ", "") and not _eteint(apres)
+    # TACAN et D/L affichent ON ; l'IFF affiche ses modes (XP le 15 nov.) une fois en marche
+    ok = (("ON" in apres.replace(" ", "")) or (apres.strip() and apres != avant)) and not _eteint(apres)
     if not ok and not _eteint(avant) and _eteint(apres):
         _appuyer(r, "UFC_ONOFF")          # c'etait deja en marche : on remet
         r.attendre(0.6)
@@ -690,6 +730,9 @@ def regler_tacan(r, pilote=False):
         texte += f" Cap {info['cap']:03d}, {info['dist']:.0f} nautiques."
     r.dire(texte)
     if pilote:
+        info = lire_hsi(r.export)
+        if not (info and info["tcn_encadre"]):
+            raise Echec("Guidage TACAN non pris sur la HSI : appuie sur TCN, puis A/P SUIT NAV.")
         _pilote("CPL", "Pilote auto couplé sur le TACAN.")(r)
 
 
@@ -700,11 +743,18 @@ def _pilote(libelle, message):
             raise Echec("Négatif. Pilote automatique en vol uniquement.")
         if libelle == "CPL" and not _hsi(r)["tcn_encadre"]:
             _guidage_wpt(r)
-        _appuyer(r, "UFC_AP")
-        r.attendre(0.4)
-        if not option_ufc(r, libelle):
-            raise Echec(f"Option {libelle} absente du pilote automatique.")
-        r.attendre(1.0)
+        for essai in range(2):
+            _appuyer(r, "UFC_AP")
+            r.attendre(0.5)
+            if not option_ufc(r, libelle):
+                if essai == 0:
+                    r.attendre(1.0)
+                    continue
+                raise Echec(f"Option {libelle} absente du pilote automatique. "
+                            "Il faut un guidage (WYPT ou TCN) encadré sur la HSI.")
+            r.attendre(1.0)
+            if option_choisie(r.b, libelle):
+                break
         if not option_choisie(r.b, libelle):
             if getattr(r, "boite", None) is not None:
                 r.boite.ecrire("pilote_auto_non_confirme", option=libelle,

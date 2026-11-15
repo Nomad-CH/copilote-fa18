@@ -291,7 +291,7 @@ class FausseNav:
         self.saisie, self.champ, self.tacan_on, self.canal = "", None, False, ""
         self.entrees = []      # ce qui a ete tape (pour les essais)
         self.iff_on = self.dl_on = False
-        self.frein = [1.0, 1.0]                 # tiree, tournee (frein serre au depart)
+        self.frein = [1.0, 0.666]               # tiree, tournee (frein serre au depart)
         self.stations = {152: 0.0, 154: 0.0, 156: 0.0, 158: 0.0, 160: 0.0}
         self.options("")
 
@@ -376,12 +376,12 @@ class FausseNav:
     def clic(self, appareil, commande, valeur):
         """Clic direct (lien version 3) : frein de parking et stations."""
         if appareil == 5 and commande == 3006 and valeur == 1:
-            self.frein[1] = 1.0
+            self.frein[1] = 0.666
         elif appareil == 5 and commande == 3005 and valeur == 1:
             if self.frein[0] > 0.5:
-                self.frein = [0.0, 0.0]          # repoussee : elle revient a l'horizontale
+                self.frein = [0.5, 0.0]          # repoussee : elle revient a l'horizontale
             elif self.frein[1] > 0.66:
-                self.frein[0] = 1.0
+                self.frein = [1.0, 0.666]
         elif appareil == 23 and valeur == 1:
             arg = {3005: 152, 3006: 154, 3007: 156, 3008: 158, 3009: 160}.get(commande)
             if arg:
@@ -449,7 +449,7 @@ def scenario_navigation(hornet, port=7790, stop=None, nav=None, port_ordres=None
         paquet = {"k": "etat", "t": 0, "avion": "FA-18C_hornet", "rwr": "",
                   "pos": {"lat": nav.avion[0], "lon": nav.avion[1], "alt": 3000, "cap": 0},
                   "vue": {"lat": 41.75, "lon": 41.70, "sol": 120.0, "haut": 20000},
-                  "args": {"240": nav.frein[0], "241": nav.frein[1], "276": 0.0,
+                  "args": {"240": nav.frein[0], "241": nav.frein[1], "276": 0.9, "277": 1.0, "216": 0.8,
                            **{str(k): v for k, v in nav.stations.items()}}}
         s.sendto(json.dumps(paquet).encode(), ("127.0.0.1", port))
         s.sendto(json.dumps({"k": "ecran", "i": 4, "txt": nav.page()}).encode(), ("127.0.0.1", port))

@@ -168,6 +168,15 @@ class Surveillance:
             self._ifa_fait = True
             a.b.envoyer("INS_SW", 4)
             self._dire("Alignement terminé. Centrale sur IFA. Avion prêt.", False)
+            # dernier controle du RWR (bouton POWER relu par le lien)
+            from . import cockpit
+            if cockpit.rwr_allume(self.export, a.b) is False:
+                import threading
+
+                def rattraper():
+                    ok = cockpit.allumer_rwr(self.export, self.ex.cfg, self.boite)
+                    self._dire("RWR allumé." if ok else "RWR éteint. Allume l'ALR-67.", False)
+                threading.Thread(target=rattraper, daemon=True).start()
 
     def _rwr_en_test(self):
         """A sa mise sous tension, le RWR fait un autotest et affiche des symboles

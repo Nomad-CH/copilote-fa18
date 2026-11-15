@@ -260,38 +260,32 @@ def _serrer_frein(r):
 
 # ---------------------------------------------------------- RWR
 def allumer_rwr(r):
-    """Le voyant POWER du RWR (relu directement par le lien, version 3) dit s'il
-    est allume. Sinon on appuie, et on verifie : voyant allume, ou l'ecran du RWR
-    qui change (autotest). Pas de reaction : on rappuie une fois."""
+    """ALR-67 en marche : bouton POWER enfonce (relu par le lien version 3),
+    affichage RWR lumineux. Verifie, et note tout dans la boite noire."""
     from . import cockpit
     x = r.export
-    if x is not None and x.ordres_possibles and cockpit.rwr_allume(x, r.b):
-        r.a.rwr_etat = True
-        return
-    for essai in range(2):
-        avant = (x.ecrans.get(7) or "") if x is not None else ""
+    boite = getattr(r, "boite", None)
+    # les deux generatrices en ligne avant d'allumer
+    fin = r.horloge() + 40
+    while r.horloge() < fin and r.a.rpm_g < 60:
+        r.attendre(0.5)
+    ok = cockpit.allumer_rwr(x, r.cfg, boite)
+    if ok is None:            # lien ancien : appui DCS-BIOS
         r.b.envoyer("RWR_POWER_BTN", 1)
         r.attendre(0.4)
         r.b.envoyer("RWR_POWER_BTN", 0)
-        r.a.rwr_appui = time.time()
-        if x is None or not x.vivant:
-            return
-        fin = r.horloge() + 12
-        while r.horloge() < fin:
-            if (x.ordres_possibles and cockpit.rwr_allume(x, r.b)) or (x.ecrans.get(7) or "") != avant:
-                r.a.rwr_etat = True
-                if getattr(r, "boite", None) is not None:
-                    r.boite.ecrire("rwr_allume", essai=essai + 1,
-                                   voyant=x.arg(cockpit.ARG_RWR_VOYANT),
-                                   ecran=(x.ecrans.get(7) or "")[:2000])
-                return
-            r.attendre(0.3)
-        r.a.rwr_etat = False
-    if getattr(r, "boite", None) is not None:
-        r.boite.ecrire("rwr_sans_reaction", voyant=x.arg(cockpit.ARG_RWR_VOYANT),
-                       bouton=x.arg(277), ecran=(x.ecrans.get(7) or "")[:2000])
-    r.non_confirmes.append("RWR")
-    r.dire("RWR non confirmé. Vérifie-le.")
+        ok = True
+    r.a.rwr_appui = time.time()
+    r.a.rwr_etat = bool(ok)
+    if x is not None and x.arg(cockpit.ARG_RWR_INTENSITE) is not None \
+            and x.arg(cockpit.ARG_RWR_INTENSITE) < 0.3:
+        r.b.envoyer("RWR_RWR_INTESITY", 52000)
+    if boite is not None and x is not None:
+        boite.ecrire("rwr_demarrage", ok=ok, args={n: x.arg(n) for n in (276, 277, 216)},
+                     ecran=(x.ecrans.get(7) or "")[:500])
+    if not ok:
+        r.non_confirmes.append("RWR")
+        r.dire("RWR non confirmé. Vérifie-le.")
 
 
 def _iff_dl(r):
@@ -300,7 +294,9 @@ def _iff_dl(r):
 
 
 def _rwr_si_besoin(r):
-    if r.a.rwr_etat is not True:
+    from . import cockpit
+    etat = cockpit.rwr_allume(r.export, r.b)
+    if etat is False or (etat is None and r.a.rwr_etat is not True):
         allumer_rwr(r)
 
 
@@ -470,7 +466,7 @@ def _demarrage(porte_avions):
         Regle("RADAR_SW", "OPR"),
         Regle("OBOGS_SW", 1),
         Regle("FLIR_SW", "STBY"),
-        Regle("CMSD_DISPENSE_SW", "ON"),
+        Regle("CMSD_DISPENSE_SW", "BYPASS"),
         Regle("ECM_MODE_SW", "STBY"),
         Regle("UFC_COMM1_VOL", 45000, verifie=False),
         Regle("UFC_COMM2_VOL", 45000, verifie=False),
@@ -489,7 +485,7 @@ def _demarrage(porte_avions):
         *FEUX_ON,
         Regle("EJECTION_SEAT_ARMED", "ARMED"),
         Appelle(_regler_bingo, "réglage BINGO"),
-        Dit("Deux moteurs au ralenti. Défenses en ligne : RWR, leurres, brouilleur en veille. "
+        Dit("Deux moteurs au ralenti. Défenses en ligne : RWR, leurres sur BYPASS, brouilleur en veille. "
             "IFF et liaison de données en marche. Passage IFA automatique à QUAL OK. "
             "Test FCS à ta charge."),
     ]
@@ -576,7 +572,7 @@ FENCE_IN = [
     Regle("MASTER_ARM_SW", "ARM"),
     Regle("RADAR_SW", "OPR"),
     Appelle(_rwr_si_besoin, "RWR"),
-    Regle("CMSD_DISPENSE_SW", "ON"),
+    Regle("CMSD_DISPENSE_SW", "BYPASS"),
     Regle("ECM_MODE_SW", "REC"),
     Regle("IR_COOL_SW", "NORM"),
     *FEUX_OFF,
@@ -662,7 +658,7 @@ AIR_AIR = [
     Regle("RADAR_SW", "OPR"),
     Regle("IR_COOL_SW", "NORM"),
     Si(lambda a: not a.allume("MASTER_MODE_AA_LT"), [Appui("MASTER_MODE_AA")]),
-    Regle("CMSD_DISPENSE_SW", "ON"),
+    Regle("CMSD_DISPENSE_SW", "BYPASS"),
     Dit("Mode air-air. Armement actif."),
 ]
 
@@ -670,7 +666,7 @@ AIR_SOL = [
     Regle("MASTER_ARM_SW", "ARM"),
     Si(lambda a: not a.allume("MASTER_MODE_AG_LT"), [Appui("MASTER_MODE_AG")]),
     Regle("FLIR_SW", "ON"),
-    Regle("CMSD_DISPENSE_SW", "ON"),
+    Regle("CMSD_DISPENSE_SW", "BYPASS"),
     Dit("Mode air-sol. Armement actif. Laser sur sécurité."),
 ]
 

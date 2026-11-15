@@ -70,43 +70,61 @@ class Copilote:
         threading.Thread(target=self._larguer, args=(sorte,), daemon=True).start()
 
     def _larguer(self, sorte):
+        """Le DISPENSER sur ON laisse l'ALE-47 en veille tant qu'on ne choisit pas un
+        mode (page EW) : rien ne part, c'est ce qui s'est passe le 15 nov. Sur BYPASS,
+        chaque appui largue 2 paillettes ou 2 leurres. Le copilote passe donc sur
+        BYPASS si ON ne donne rien."""
         from .avion import POS
         b, x = self.b, self.export
-        if b.lire("CMSD_DISPENSE_SW") != POS["CMSD_DISPENSE_SW"]["ON"]:
-            b.envoyer("CMSD_DISPENSE_SW", POS["CMSD_DISPENSE_SW"]["ON"])
+        mode = self.cfg.get("leurres_dispenser", "BYPASS")
+        if b.lire("CMSD_DISPENSE_SW") not in (POS["CMSD_DISPENSE_SW"]["ON"], POS["CMSD_DISPENSE_SW"]["BYPASS"]):
+            b.envoyer("CMSD_DISPENSE_SW", POS["CMSD_DISPENSE_SW"][mode])
             time.sleep(0.4)
         avant = x.leurres if (x is not None and x.vivant) else None
-        # interrupteur de la manette : 2 = avant (paillettes), 0 = arriere (leurres IR)
+        ok = self._appui_leurres(sorte, avant)
+        if ok is None:
+            return
+        if not ok and b.lire("CMSD_DISPENSE_SW") != POS["CMSD_DISPENSE_SW"]["BYPASS"]:
+            b.envoyer("CMSD_DISPENSE_SW", POS["CMSD_DISPENSE_SW"]["BYPASS"])
+            time.sleep(0.6)
+            avant = x.leurres or avant
+            ok = self._appui_leurres(sorte, avant)
+            if ok:
+                self.cfg["leurres_dispenser"] = "BYPASS"
+                self.dire("DISPENSER sur BYPASS : deux leurres par appui.")
+        if not ok:
+            self.dire("Négatif, aucun largage.")
+            self.boite.ecrire("largage_sans_effet", leurre=sorte, leurres=avant,
+                              dispenser=b.lire("CMSD_DISPENSE_SW"),
+                              args=dict(x.args) if x is not None else None)
+
+    def _appui_leurres(self, sorte, avant):
+        """Un appui sur l'interrupteur de la manette. -> True/False, None si invérifiable."""
+        b, x = self.b, self.export
         b.envoyer("THROTTLE_DISP_SW", 2 if sorte == "chaff" else 0)
         time.sleep(0.25)
         b.envoyer("THROTTLE_DISP_SW", 1)
         if avant is None:
-            return
+            return None
         time.sleep(1.2)
         apres = x.leurres or avant
         if apres == avant and x.ordres_possibles:
-            # DCS-BIOS sans effet : clic direct sur l'interrupteur (appareil 13)
             cmd, val = (3032, 1) if sorte == "chaff" else (3033, -1)
             x.clic(13, cmd, val)
             time.sleep(0.3)
             x.clic(13, cmd, 0)
             time.sleep(1.2)
             apres = x.leurres or avant
-            self.boite.ecrire("leurres_clic_direct", leurre=sorte, avant=avant, apres=apres,
-                              interrupteur=x.arg(488), dispenser=x.arg(517))
         paillettes, ir = avant[0] - apres[0], avant[1] - apres[1]
+        if paillettes <= 0 and ir <= 0:
+            return False
         if paillettes > 0 and ir > 0:
             self.dire("Paillettes et leurres.")
         elif paillettes > 0:
             self.dire("Paillettes." if sorte == "chaff" else "Paillettes larguées, pas de leurre IR.")
-        elif ir > 0:
-            self.dire("Leurre." if sorte == "flare" else "Leurre IR largué, pas de paillettes.")
         else:
-            self.dire("Négatif, aucun largage. Vérifie le DISPENSER.")
-            self.boite.ecrire("largage_sans_effet", leurre=sorte, leurres=avant,
-                              dispenser=b.lire("CMSD_DISPENSE_SW"),
-                              rwr=b.lire("RWR_LOWER_LT"),
-                              args=dict(x.args) if x is not None else None)
+            self.dire("Leurre." if sorte == "flare" else "Leurre IR largué, pas de paillettes.")
+        return True
 
     def fenetre(self, action):
         """action : 'suivante' (pleine -> barre -> cachee) ou 'coin'."""
@@ -200,7 +218,7 @@ class Copilote:
         self.nav.passe = numero
         self.ex.lancer("wpt_passe")
 
-    def prendre_point(self, sur_avion=False):
+    def prendre_point(self, sur_avion=False, nom=""):
         """Carte F10 : le point au centre de l'ecran (le viseur). Sinon : l'avion."""
         from .navigation import Point
         x = self.export
@@ -212,7 +230,7 @@ class Copilote:
             if not pos:
                 self.dire("Négatif. Position de l'avion inconnue.")
                 return None
-            p = Point(self.nav.nom_libre("Marque"), pos["lat"], pos["lon"], pos.get("alt"), "position")
+            p = Point(nom or self.nav.nom_libre("Marque"), pos["lat"], pos["lon"], pos.get("alt"), "position")
         else:
             vue = x.vue
             if not vue:
@@ -224,7 +242,7 @@ class Copilote:
                     and abs(vue["lon"] - pos.get("lon", 0)) < 0.002:
                 self.dire("Ouvre la carte F10 et centre le viseur sur le point.")
                 return None
-            p = Point(self.nav.nom_libre("Point"), vue["lat"], vue["lon"], vue.get("sol"), "carte")
+            p = Point(nom or self.nav.nom_libre("Point"), vue["lat"], vue["lon"], vue.get("sol"), "carte")
         self.nav.ajouter(p)
         texte = f"{p.nom} : waypoint {p.num}, à envoyer."
         if x.position:
@@ -336,8 +354,15 @@ class Copilote:
         if en_f18 and not self._etait_en_f18:
             self.dire(random.choice(ACCUEILS))
             threading.Thread(target=self._verifier_touches, daemon=True).start()
+            # nouveau vol (pas une simple coupure de quelques secondes)
+            if self.nav.fin_mission and maintenant - self.nav.fin_mission > 60:
+                retires = self.nav.nouvelle_mission()
+                if retires:
+                    self.dire(f"Plan de vol : {retires} waypoint{'s' if retires > 1 else ''} "
+                              "de l'ancienne mission retirés.")
         elif self._etait_en_f18 and not en_f18:
             self.message = "En attente de DCS."
+            self.nav.fin_de_vol()
         self._etait_en_f18 = en_f18
         if maintenant - self._dernier_surv > 0.25:
             self._dernier_surv = maintenant
