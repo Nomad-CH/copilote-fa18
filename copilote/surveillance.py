@@ -35,7 +35,7 @@ ALERTES = [
     ("feu_g", lambda a: a.allume("FIRE_LEFT_LT"), ["Feu moteur gauche ! Feu moteur gauche !"], True),
     ("feu_d", lambda a: a.allume("FIRE_RIGHT_LT"), ["Feu moteur droit ! Feu moteur droit !"], True),
     ("feu_apu", lambda a: a.allume("FIRE_APU_LT"), ["Feu APU ! Feu APU !"], True),
-    ("sam", lambda a: a.allume("RH_ADV_SAM"), ["Missile sol-air ! Défends !"], True),
+    ("sam", lambda a: a.allume("RH_ADV_SAM"), ["Tir sol-air ! Défends !"], True),
     ("ai", lambda a: a.allume("RH_ADV_AI"), ["Radar chasseur. Accroché."], True),
     ("aaa", lambda a: a.allume("RH_ADV_AAA"), ["Artillerie antiaérienne."], False),
     ("bingo", _bingo, ["Bingo. Bingo."], True),
@@ -79,6 +79,8 @@ class Surveillance:
         self.export = export
         self.boite = boite
         self.larguer = None        # fonction de largage des leurres (donnee par le copilote)
+        self._voyants_def = {}
+        self._tir = None
         self._prochaine_lecture_pages = 0.0
         self.actives = []          # textes courts pour l'affichage
         self._etat = {}
@@ -194,8 +196,9 @@ class Surveillance:
             self._rwr_muet_jusqua = maintenant + 25
         self._rwr_allume = allume
         appui = getattr(self.a, "rwr_appui", 0)
+        # (le voyant BIT reste allume en vol : il ne veut pas dire autotest, cf. vol du
+        # 15 nov. 17 h 52 ou le copilote est reste sourd au SA-8 a cause de lui)
         return (maintenant < self._rwr_muet_jusqua or maintenant - appui < 25
-                or self.a.allume("RWR_BIT_LT")
                 or self.ex.en_cours in ("demarrage_terre", "demarrage_pa"))
 
     def _suivre_menaces(self):
@@ -243,49 +246,54 @@ class Surveillance:
                 del self.menaces[sym]
 
     # ------------------------------------------------------------- defense
-    # Regles choisies avec toi le 15 nov. : un simple accrochage ne vide pas les
-    # leurres. En AUTO : paillettes (menace radar) ou leurres IR (menace IR) seulement
-    # si l'accrochage dure 4 s, puis toutes les 3 s, au plus 3 paquets par menace ;
-    # si le voyant CW s'allume (guidage d'un missile) : tout de suite, puis toutes
-    # les 1,5 s, au plus 6. Jamais sous la reserve (10 de chaque).
+    # Regles (vol du 15 nov.) : un accrochage seul ne vide jamais les leurres.
+    # En AUTO, on largue sur un TIR : voyant SAM ou CW qui s'allume (le SAM s'est
+    # allume a chaque tir du SA-8). Paillettes tout de suite, puis toutes les 1,5 s
+    # tant que le voyant reste allume, 6 paquets maximum par tir. Reserve de 10.
     RESERVE = 10
 
     def _defense(self, vues, sam, maintenant):
-        from .exportdcs import menace
-        cw = self.a.allume("RH_ADV_CW")
+        a = self.a
+        voyants = {"SAM": a.allume("RH_ADV_SAM"), "CW": a.allume("RH_ADV_CW"),
+                   "AI": a.allume("RH_ADV_AI")}
+        tir = voyants["SAM"] or voyants["CW"]
+        # journal des voyants (pour apprendre a reconnaitre un tir)
+        for nom, allume in voyants.items():
+            if allume != self._voyants_def.get(nom, False) and self.boite is not None:
+                self.boite.ecrire("voyant_menace", voyant=nom, allume=allume,
+                                  menaces=dict(vues), ecran=(self.export.ecrans.get(7) or "")[:3000])
+            self._voyants_def[nom] = allume
         for sym, niveau in vues.items():
             info = self.menaces.get(sym)
             if info is None:
                 continue
-            if niveau != "clignote" and not cw:
-                info.pop("lock", None)
-                continue
-            ep = info.setdefault("lock", {"debut": maintenant, "paquets": 0, "dernier": 0.0})
-            self._capturer_rwr(sym, ep, maintenant, cw)
-            if self.ex.cfg.get("defense", "CONSEIL") != "AUTO" or self.larguer is None:
-                continue
-            _nom, conseil = menace(sym, sam)
-            sorte = "flare" if conseil == "F" else "chaff"
-            if cw:
-                pret, maxi, ecart = True, 6, 1.5
+            if niveau == "clignote" or tir:
+                ep = info.setdefault("lock", {"debut": maintenant})
+                self._capturer_rwr(sym, ep, maintenant, voyants["CW"])
             else:
-                pret, maxi, ecart = maintenant - ep["debut"] >= 4, 3, 3.0
-            if not pret or ep["paquets"] >= maxi or maintenant - ep["dernier"] < ecart:
-                continue
-            stock = self.export.leurres
-            if stock:
-                reste = stock[0] if sorte == "chaff" else stock[1]
-                if reste <= self.RESERVE:
-                    if not ep.get("reserve_dite"):
-                        ep["reserve_dite"] = True
-                        self._dire("Réserve de leurres atteinte. Largage à ta main.", True)
-                    continue
-            ep["paquets"] += 1
-            ep["dernier"] = maintenant
-            self.larguer(sorte)
-            if self.boite is not None:
-                self.boite.ecrire("defense_auto", symbole=sym, leurre=sorte, cw=cw,
-                                  paquet=ep["paquets"], leurres=stock)
+                info.pop("lock", None)
+        if not tir:
+            self._tir = None
+            return
+        if self._tir is None:
+            self._tir = {"debut": maintenant, "paquets": 0, "dernier": 0.0}
+        t = self._tir
+        if self.ex.cfg.get("defense", "CONSEIL") != "AUTO" or self.larguer is None:
+            return
+        if t["paquets"] >= 6 or maintenant - t["dernier"] < 1.5:
+            return
+        stock = self.export.leurres
+        if stock and stock[0] <= self.RESERVE:
+            if not t.get("reserve_dite"):
+                t["reserve_dite"] = True
+                self._dire("Réserve de paillettes atteinte. Largage à ta main.", True)
+            return
+        t["paquets"] += 1
+        t["dernier"] = maintenant
+        self.larguer("chaff")
+        if self.boite is not None:
+            self.boite.ecrire("defense_auto", voyants=voyants, menaces=dict(vues),
+                              paquet=t["paquets"], leurres=stock)
 
     def _capturer_rwr(self, sym, ep, maintenant, cw):
         """Pendant un accrochage, garde l'ecran RWR et les voyants (2 fois par

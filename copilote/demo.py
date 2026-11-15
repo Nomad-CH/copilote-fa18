@@ -306,6 +306,7 @@ class FausseNav:
                                    "pages_msn_15nov.json"), encoding="utf-8") as f:
                 self.pages_msn = _j.load(f)
             self.sta, self.cibles = 8, {}
+            self.modes = {8: "TOO", 2: "PP", 7: "PP", 3: "PP"}
         except OSError:
             self.pages = None
         self.options("")
@@ -427,7 +428,9 @@ class FausseNav:
         elif p == "msn" and pb == 13:
             ordre = [8, 2, 7, 3]
             self.sta = ordre[(ordre.index(self.sta) + 1) % 4]
-        elif p == "msn" and 6 <= pb <= 11:
+        elif p == "msn" and pb == 5:
+            self.modes[self.sta] = "TOO" if self.modes[self.sta] == "PP" else "PP"
+        elif p == "msn" and 6 <= pb <= 11 and self.modes[self.sta] == "PP":
             self.pp = pb - 5
         elif p == "msn" and pb == 14:
             self.ufc_mode = "TGT"
@@ -452,6 +455,8 @@ class FausseNav:
             return self.pages_msn["dsply"]
         if self.ddi == "msn":
             t = self.pages_msn["msn1"].replace("CurrStation_JDAM\n8", "CurrStation_JDAM\n%d" % self.sta)
+            if self.modes[self.sta] == "TOO":
+                t = t.replace("MISSION_Type\nPP1", "MISSION_Type\nTOO1").replace("Miss_Type\nPP1", "Miss_Type\nTOO1")
             c = self.cibles.get(self.sta)
             if c:
                 def dms(v):
@@ -538,6 +543,8 @@ def scenario_navigation(hornet, port=7790, stop=None, nav=None, port_ordres=None
             if len(m) == 4 and m[0] == "clic":
                 nav.clic(int(m[1]), int(m[2]), float(m[3]))
         paquet = {"k": "etat", "t": 0, "avion": "FA-18C_hornet", "rwr": "",
+                  "emport": {"courante": 0, "obus": 578, "stations": [
+                      {"st": s, "nom": "GBU-38(V)1/B", "n": 1} for s in (2, 3, 7, 8)]},
                   "pos": {"lat": nav.avion[0], "lon": nav.avion[1], "alt": 3000, "cap": 0},
                   "vue": {"lat": 41.75, "lon": 41.70, "sol": 120.0, "haut": 20000},
                   "args": {"240": nav.frein[0], "241": nav.frein[1], "276": 0.9, "277": 1.0, "216": 0.8,

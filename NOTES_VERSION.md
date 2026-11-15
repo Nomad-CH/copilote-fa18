@@ -1,9 +1,7 @@
-**Version 0.14.0** — défense
+**Version 0.15.0** — défense et JDAM, après ton vol contre le SA-8
 
-- Touche DÉFENSE (page COMBAT, à la place de REFROID. IR) : OFF / CONSEIL / AUTO.
-  - CONSEIL (par défaut) : annonce la menace et le conseil, ne largue rien.
-  - AUTO : un simple accrochage ne vide pas les leurres. Paillettes (menace radar) ou leurres IR (menace IR) seulement si l'accrochage dure 4 s, puis toutes les 3 s, 3 paquets maximum par menace. Si le voyant CW s'allume (guidage d'un missile) : tout de suite, puis toutes les 1,5 s, 6 maximum. Réserve de 10 jamais touchée. Master arm et mode A/A ou A/G nécessaires.
-- Pendant chaque accrochage, l'écran RWR et les voyants sont enregistrés (boîte noire) pour apprendre à reconnaître un tir.
-- RWR : la mise sous tension est lue sur le bouton POWER, plus de silence de 25 s à la première menace.
-
-**0.14.1** — Link 16 : D/L appuyé deux fois sur l'UFC (un seul appui = Link 4), puis ON/OFF maintenu. C'est sans doute pour ça que ton ailier n'apparaissait pas.
+- RWR : le voyant BIT reste allumé en vol ; le copilote le prenait pour un autotest et ne voyait plus aucune menace. Corrigé.
+- Défense AUTO : un accrochage seul ne largue jamais rien (conseil seulement). Sur un TIR (voyant SAM ou CW allumé, ce qui s'est produit à chaque tir du SA-8) : paillettes tout de suite, puis toutes les 1,5 s tant que le voyant reste allumé, 6 paquets maximum. Réserve de 10. L'alerte dit « Tir sol-air ! Défends ! ».
+- Les voyants SAM / CW / AI et l'écran RWR sont notés à chaque changement, pour affiner.
+- JDAM : le mode PP / TOO est propre à chaque station. Le copilote le règle maintenant station par station sur la page MSN (TOO sur toutes les stations pour JDAM SUR WAYPOINT ; PP sur les stations programmées).
+- JDAM : la page MSN n'apparaît qu'une vingtaine de secondes après la mise en route de la bombe ; le copilote l'attend.

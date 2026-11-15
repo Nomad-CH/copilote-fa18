@@ -209,13 +209,30 @@ def jdam_too(r):
     numero = _hsi(r)["wypt"]
     _designer_waypoint(r)
     d = _preparer(r, "TOO")
+    # chaque station JDAM en TOO (le mode est propre a chaque station)
+    stations = sorted(stations_jdam(r.export), key=lambda s: ORDRE_LARGAGE.index(s)
+                      if s in ORDRE_LARGAGE else 9)
+    relu = None
+    try:
+        _page_msn(r)
+        for st in stations or [None]:
+            if st is not None:
+                _station_msn(r, st)
+            m = _mode_station(r, "TOO")
+            relu = relu or (m["tgt_lat"], m["tgt_lon"])
+        _station_msn(r, stations[0]) if stations else None
+        bouton_ddi(r, "msn_retour", (19,), lambda a, b: not b["msn_page"])
+    except Echec as ex:
+        r.non_confirmes.append("TOO sur chaque station (" + str(ex) + ")")
+    d = _ddi(r) if _ddi(r)["jdam"] else d
     info = lire_hsi(r.export)
     texte = f"JDAM prête, mode TOO sur le waypoint {numero}. Fusée {d['fusee'] or 'à vérifier'}."
     if info and info["cap"] is not None and info["dist"] is not None:
         texte += f" Cible au {info['cap']:03d}, {info['dist']:.0f} nautiques."
     texte += " Master arm et largage à toi."
     if getattr(r, "boite", None) is not None:
-        r.boite.ecrire("jdam_too", waypoint=numero, stores=d["texte"][:20000])
+        r.boite.ecrire("jdam_too", waypoint=numero, cible_lue=relu, stations=stations,
+                       stores=d["texte"][:20000])
     r.dire(texte)
 
 
@@ -276,7 +293,17 @@ def _station_msn(r, station):
     raise Echec(f"Station {station} introuvable avec STEP.")
 
 
+def _mode_station(r, voulu):
+    """Sur la page MSN : le mode PP / TOO est propre a chaque station (fiche
+    kneeboard JDAM). MODE = PB5. En TOO, les PP ne s'affichent pas du tout."""
+    d = _ddi(r)
+    if d["mission"].startswith(voulu):
+        return d
+    return bouton_ddi(r, "msn_mode", (5,), lambda a, b: b["mission"].startswith(voulu))
+
+
 def _entrer_cible(r, p):
+    _mode_station(r, "PP")
     if "PP1" not in _ddi(r)["mission"]:
         bouton_ddi(r, "pp1", (6,), lambda a, b: "PP1" in b["mission"])
     _appuyer(r, f"{_pb(DDI_G)}14")                     # UFC TGT
