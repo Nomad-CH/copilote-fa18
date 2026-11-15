@@ -54,6 +54,7 @@ jobs:
         run: |
           pyinstaller --noconfirm --windowed --name CopiloteF18 --icon icone.ico `
             --add-data "polices;polices" `
+            --add-data "tablette;tablette" `
             --add-data "dcsbios_json;dcsbios_json" `
             --add-data "outils/CopiloteExport.lua;outils" `
             --add-data "config_defaut.json;." `

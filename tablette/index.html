@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0A0E0B">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone.png">
+<title>Copilote F/A-18</title>
+<link rel="stylesheet" href="leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ entree : code a 6 chiffres ============ -->
+<section id="entree" hidden>
+  <div class="carte-entree">
+    <div class="titre">COPILOTE F/A-18</div>
+    <p>Tape le code affiché dans la fenêtre du copilote<br>(bouton TABLETTE).</p>
+    <input id="code" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="••••••">
+    <button id="b-entrer" class="gros">ENTRER</button>
+    <p id="entree-msg" class="alerte"></p>
+  </div>
+</section>
+
+<!-- ============ application ============ -->
+<section id="appli" hidden>
+  <header id="bandeau">
+    <div id="etat-lien" class="pastille">—</div>
+    <div class="info"><span class="lib">CARBU</span><span id="i-carbu">—</span></div>
+    <div class="info"><span class="lib">ALT</span><span id="i-alt">—</span></div>
+    <div class="info"><span class="lib">VIT</span><span id="i-vit">—</span></div>
+    <div class="info"><span class="lib">WPT</span><span id="i-wpt">—</span></div>
+    <div class="espace"></div>
+    <div id="defense" class="segment">
+      <button data-mode="OFF">OFF</button><button data-mode="CONSEIL">CONSEIL</button><button data-mode="AUTO">AUTO</button>
+    </div>
+    <button id="b-chaff" class="leurre">PAILLETTES<small id="n-chaff"></small></button>
+    <button id="b-flare" class="leurre">LEURRE IR<small id="n-flare"></small></button>
+  </header>
+  <div id="menace" hidden></div>
+
+  <main>
+    <div id="carte"></div>
+
+    <aside id="panneau">
+      <nav id="onglets">
+        <button data-onglet="plan" class="actif">PLAN</button>
+        <button data-onglet="jdam">JDAM</button>
+        <button data-onglet="tacan">TACAN</button>
+        <button data-onglet="avion">AVION</button>
+        <button data-onglet="journal">JOURNAL</button>
+      </nav>
+
+      <!-- PLAN -->
+      <div class="onglet" id="o-plan">
+        <div class="aide">Touche la carte pour ajouter un waypoint. Touche un waypoint pour le gérer.</div>
+        <div class="rangee">
+          <button data-act="lire_avion">LIRE L'AVION</button>
+          <button data-act="envoyer_plan" id="b-envoyer" class="principal">ENVOYER À L'AVION</button>
+        </div>
+        <div class="rangee">
+          <button data-act="wpt_moins">◀ WPT</button>
+          <button data-act="wpt_plus">WPT ▶</button>
+          <button data-act="retour_base">RETOUR BASE</button>
+          <button id="b-ici">MARQUER ICI</button>
+        </div>
+        <ul id="liste-plan" class="liste"></ul>
+        <details class="saisie">
+          <summary>Ajouter par coordonnées</summary>
+          <div class="rangee">
+            <input id="s-num" placeholder="N°" inputmode="numeric" class="court">
+            <input id="s-nom" placeholder="Nom" maxlength="12">
+          </div>
+          <div class="rangee"><input id="s-coord" placeholder="N41 55.200 E041 51.500"></div>
+          <div class="rangee"><button id="b-ajouter-coord">AJOUTER</button></div>
+        </details>
+        <div class="rangee"><button id="b-nouveau" class="discret">NOUVEAU PLAN</button></div>
+      </div>
+
+      <!-- JDAM -->
+      <div class="onglet" id="o-jdam" hidden>
+        <div class="aide">Une station → un waypoint du plan. Les bombes partent dans l'ordre 8, 2, 7, 3.</div>
+        <div id="jdam-stations"></div>
+        <div class="rangee"><button id="b-jdam-prog" class="principal">PROGRAMMER LES JDAM</button></div>
+        <div class="separateur">ou, en TOO (cible désignée)</div>
+        <div class="rangee">
+          <select id="jdam-too-wpt"></select>
+          <button id="b-jdam-too">JDAM SUR CE WAYPOINT</button>
+        </div>
+      </div>
+
+      <!-- TACAN -->
+      <div class="onglet" id="o-tacan" hidden>
+        <ul id="liste-tacan" class="liste"></ul>
+        <div class="rangee">
+          <button id="b-tacan" class="principal">RÉGLER</button>
+          <button id="b-tacan-ap">RÉGLER + PILOTE AUTO</button>
+        </div>
+        <details class="saisie">
+          <summary>Ajouter un canal</summary>
+          <div class="rangee">
+            <input id="t-nom" placeholder="Nom" maxlength="14">
+            <input id="t-canal" placeholder="Canal" inputmode="numeric" class="court">
+          </div>
+          <div class="rangee">
+            <select id="t-bande"><option>X</option><option>Y</option></select>
+            <select id="t-mode"><option>T/R</option><option>A/A</option></select>
+            <button id="b-tacan-ajouter">AJOUTER</button>
+          </div>
+          <div class="aide">T/R : base ou porte-avions. A/A : ravitailleur ou ailier.</div>
+        </details>
+      </div>
+
+      <!-- AVION -->
+      <div class="onglet" id="o-avion" hidden>
+        <div id="proc-en-cours" class="aide" hidden></div>
+        <div class="grille" id="grille-proc"></div>
+        <div class="separateur">Pilote automatique</div>
+        <div class="grille">
+          <button data-proc="ap_balt">GARDE ALT.</button>
+          <button data-proc="ap_hsel">GARDE CAP</button>
+          <button data-proc="ap_cpl">SUIT NAV</button>
+          <button data-proc="ap_off" class="rouge">A/P OFF</button>
+        </div>
+        <div class="separateur">Divers</div>
+        <div class="grille">
+          <button id="b-frein">FREIN PARK</button>
+          <button id="b-ravito">RAVITO</button>
+          <button id="b-marquer">MARQUER</button>
+          <button id="b-stop" class="rouge">STOP PROCÉDURE</button>
+        </div>
+      </div>
+
+      <!-- JOURNAL -->
+      <div class="onglet" id="o-journal" hidden>
+        <ul id="journal" class="liste journal"></ul>
+      </div>
+    </aside>
+  </main>
+  <div id="toast" hidden></div>
+</section>
+
+<script src="leaflet/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

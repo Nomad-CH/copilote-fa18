@@ -30,5 +30,6 @@
   "tacan": [],
   "nav_sequence_auto": true,
   "boutons_hsi": {},
-  "defense": "CONSEIL"
+  "defense": "CONSEIL",
+  "tablette": true
 }

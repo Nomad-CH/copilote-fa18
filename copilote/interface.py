@@ -155,7 +155,7 @@ class Interface:
         self.b_ravito = Bouton(grille, "RADIO RAVITO", self.regler_ravito, self.p_bouton)
         self.b_envoi = Bouton(grille, "ENVOI À CLAUDE", self.regler_envoi, self.p_bouton)
         self.b_carnet = Bouton(grille, "PLAN DE VOL", self.ouvrir_plan, self.p_bouton)
-        self.b_viseur = Bouton(grille, "VISEUR CARTE", self.basculer_viseur, self.p_bouton)
+        self.b_viseur = Bouton(grille, "TABLETTE", self.ouvrir_tablette, self.p_bouton)
         for i, b in enumerate((self.b_voix, self.b_choix, self.b_touches, self.b_diag,
                                self.b_demo, self.b_virtuel, self.b_ravito, self.b_envoi,
                                self.b_carnet, self.b_viseur,
@@ -571,7 +571,15 @@ class Interface:
         self.racine.destroy()
 
     def lancer(self):
-        self.racine.mainloop()
+        if not self.app.tablette.demarrer() and self.app.tablette.erreur:
+            print("Tablette :", self.app.tablette.erreur, flush=True)
+        try:
+            self.racine.mainloop()
+        finally:
+            self.app.tablette.arreter()
+
+    def ouvrir_tablette(self):
+        FenetreTablette(self)
 
 
 class _Double:
@@ -1047,3 +1055,38 @@ class PlanDeVol:
             self.nav.tacan = max(0, k - 1)
             sauver_config(self.ui.cfg)
             self.remplir()
+
+
+class FenetreTablette:
+    """Comment connecter la tablette : adresse, code, et un QR code a scanner."""
+
+    def __init__(self, ui):
+        from .tablette import code_acces
+        t = ui.app.tablette
+        f = self.f = tk.Toplevel(ui.racine)
+        f.title("Tablette")
+        f.configure(bg=FOND)
+        f.attributes("-topmost", True)
+        tk.Label(f, text="TABLETTE", bg=FOND, fg=VERT, font=ui.p_titre).pack(pady=(12, 4))
+        if t.serveur is None:
+            tk.Label(f, text="Serveur tablette arrêté.\n" + (t.erreur or ""), bg=FOND, fg=AMBRE,
+                     font=ui.p_texte, justify="center").pack(padx=20, pady=10)
+            return
+        adresse = t.adresse
+        tk.Label(f, text="1. Tablette sur le même Wi-Fi que ce PC.\n"
+                         "2. Scanne le QR code avec l'appareil photo (ou tape l'adresse dans Chrome).\n"
+                         "3. Tape le code, puis menu ⋮ > Ajouter à l'écran d'accueil.",
+                 bg=FOND, fg=PALE, font=ui.p_petit, justify="left").pack(padx=20, pady=4)
+        try:
+            import qrcode
+            from PIL import ImageTk
+            img = qrcode.make(adresse, box_size=7, border=2).convert("RGB")
+            self.photo = ImageTk.PhotoImage(img)
+            tk.Label(f, image=self.photo, bg=FOND).pack(pady=8)
+        except Exception:
+            pass
+        tk.Label(f, text=adresse, bg=FOND, fg=VERT, font=ui.p_titre).pack()
+        tk.Label(f, text="CODE : " + " ".join(code_acces(ui.cfg)), bg=FOND, fg=AMBRE,
+                 font=ui.p_titre).pack(pady=(6, 4))
+        tk.Label(f, text="Si Windows demande l'autorisation du pare-feu : coche « Réseaux privés ».",
+                 bg=FOND, fg=GRIS, font=ui.p_petit).pack(padx=20, pady=(4, 14))

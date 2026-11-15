@@ -51,6 +51,8 @@ class Copilote:
         # demandes pour la fenetre (venant du Stream Deck, donc d'un autre fil)
         self.demandes_fenetre = queue.Queue()
         self._verrou_leurres = threading.Lock()
+        from .tablette import Tablette
+        self.tablette = Tablette(self, cfg)
         self.message = "Copilote prêt."
         self._touches = [None] * (COLS * RANGS)
         self._affiche = [None] * (COLS * RANGS)

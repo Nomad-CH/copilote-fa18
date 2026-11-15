@@ -1,0 +1,10 @@
+{
+  "name": "Copilote F/A-18",
+  "short_name": "Copilote",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#0A0E0B",
+  "theme_color": "#0A0E0B",
+  "icons": [{ "src": "icone.png", "sizes": "512x512", "type": "image/png" }]
+}

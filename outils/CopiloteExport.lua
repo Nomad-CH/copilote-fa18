@@ -1,4 +1,4 @@
--- Lien entre DCS et le copilote F/A-18 (version 3).
+-- Lien entre DCS et le copilote F/A-18 (version 4).
 -- Charge par Export.lua. Envoie au copilote, sur cet ordinateur uniquement
 -- (127.0.0.1, port UDP 7790) : le texte du RWR, le texte des ecrans du
 -- cockpit, l'emport, la position de l'avion et celle du centre de la vue
@@ -6,7 +6,8 @@
 -- quelques commandes du cockpit.
 -- Recoit du copilote (127.0.0.1, port UDP 7791, cet ordinateur seulement) des
 -- clics de commandes du cockpit, pour celles que DCS-BIOS manoeuvre mal
--- (poignee de frein, boutons de largage selectif...). Rien d'autre.
+-- (poignee de frein, boutons de largage selectif...), et des demandes
+-- d'altitude du sol pour un point de la carte (tablette). Rien d'autre.
 
 local CE = {
 	port = 7790,
@@ -137,6 +138,15 @@ local function ordres()
 			if d then
 				local dev = appel("GetDevice", tonumber(d))
 				if dev then pcall(dev.performClickableAction, dev, tonumber(c), tonumber(v)) end
+			elseif ligne:match("^sol") then
+				local id, la, lo = ligne:match("^sol%s+(%d+)%s+(%-?[%d%.]+)%s+(%-?[%d%.]+)")
+				if id then
+					local p = appel("LoGeoCoordinatesToLoCoordinates", tonumber(lo), tonumber(la))
+					if type(p) == "table" then
+						CE.sols = CE.sols or {}
+						CE.sols[id] = appel("LoGetAltitude", p.x, p.z)
+					end
+				end
 			elseif ligne:match("^suivre") then
 				local liste = {}
 				for n in ligne:gmatch("(%d+)") do liste[#liste + 1] = tonumber(n) end
@@ -168,8 +178,10 @@ local function image()
 		local self = appel("LoGetSelfData")
 		local leurres = appel("LoGetSnares")
 		local av, vue = positions()
+		local sols = CE.sols
+		CE.sols = nil
 		envoyer({
-			pos = av, vue = vue, args = arguments(),
+			pos = av, vue = vue, args = arguments(), sols = sols,
 			k = "etat", t = t,
 			avion = type(self) == "table" and self.Name or "",
 			rwr = ecran(7),

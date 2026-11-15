@@ -291,6 +291,7 @@ class FausseNav:
         self.saisie, self.champ, self.tacan_on, self.canal = "", None, False, ""
         self.entrees = []      # ce qui a ete tape (pour les essais)
         self.iff_on = self.dl_on = False
+        self.sols = {}
         self.frein = [1.0, 0.666]               # tiree, tournee (frein serre au depart)
         self.stations = {152: 0.0, 154: 0.0, 156: 0.0, 158: 0.0, 160: 0.0}
         self.ddi = "hud"                        # DDI gauche : hud, menu, stores, jdam, efuz, dsply, msn
@@ -542,14 +543,18 @@ def scenario_navigation(hornet, port=7790, stop=None, nav=None, port_ordres=None
             m = msg.split()
             if len(m) == 4 and m[0] == "clic":
                 nav.clic(int(m[1]), int(m[2]), float(m[3]))
+            elif len(m) == 4 and m[0] == "sol":
+                nav.sols[m[1]] = 250.0
         paquet = {"k": "etat", "t": 0, "avion": "FA-18C_hornet", "rwr": "",
                   "emport": {"courante": 0, "obus": 578, "stations": [
                       {"st": s, "nom": "GBU-38(V)1/B", "n": 1} for s in (2, 3, 7, 8)]},
                   "pos": {"lat": nav.avion[0], "lon": nav.avion[1], "alt": 3000, "cap": 0},
                   "vue": {"lat": 41.75, "lon": 41.70, "sol": 120.0, "haut": 20000},
+                  "sols": dict(nav.sols),
                   "args": {"240": nav.frein[0], "241": nav.frein[1], "276": 0.9, "277": 1.0, "216": 0.8,
                            **{str(k): v for k, v in nav.stations.items()}}}
         s.sendto(json.dumps(paquet).encode(), ("127.0.0.1", port))
+        nav.sols = {}
         s.sendto(json.dumps({"k": "ecran", "i": 4, "txt": nav.page()}).encode(), ("127.0.0.1", port))
         s.sendto(json.dumps({"k": "ecran", "i": 2, "txt": nav.page_ddi()}).encode(), ("127.0.0.1", port))
         time.sleep(0.1)

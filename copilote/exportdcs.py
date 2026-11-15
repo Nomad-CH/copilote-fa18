@@ -127,6 +127,8 @@ class ExportDCS:
         self.vue = None             # centre de la vue / carte F10 : lat, lon, sol (m), haut (m)
         self.args = {}              # position de quelques commandes du cockpit (argument DCS -> valeur)
         self.temps_modele = None    # horloge de la mission (repart de zero a chaque mission)
+        self.sols = {}              # reponses aux demandes d'altitude du sol
+        self._n_sol = 0
         self._rwr = collections.deque(maxlen=40)   # (heure, tuple de symboles)
         self._verrou = threading.Lock()
         self._stop = False
@@ -138,6 +140,15 @@ class ExportDCS:
             self._envoi = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         msg = f"clic {int(appareil)} {int(commande)} {float(valeur):g}"
         self._envoi.sendto(msg.encode(), ("127.0.0.1", self.port_ordres))
+
+    def demander_sol(self, lat, lon):
+        """Altitude du sol (m) d'un point : la reponse arrive dans self.sols[n]."""
+        if self._envoi is None:
+            self._envoi = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._n_sol += 1
+        self._envoi.sendto(f"sol {self._n_sol} {lat:.7f} {lon:.7f}".encode(),
+                           ("127.0.0.1", self.port_ordres))
+        return self._n_sol
 
     def arg(self, numero):
         return self.args.get(numero)
@@ -212,6 +223,10 @@ class ExportDCS:
             if isinstance(paquet.get("t"), (int, float)):
                 self.temps_modele = float(paquet["t"])
             self.vue = paquet.get("vue") or None
+            if isinstance(paquet.get("sols"), dict):
+                for k, v in paquet["sols"].items():
+                    if isinstance(v, (int, float)):
+                        self.sols[int(k)] = float(v)
             if isinstance(paquet.get("args"), dict):
                 self.args = {int(k): float(v) for k, v in paquet["args"].items()}
             self.dernier = maintenant

@@ -1,7 +1,8 @@
-**Version 0.15.0** — défense et JDAM, après ton vol contre le SA-8
+**Version 0.16.0** — la tablette
 
-- RWR : le voyant BIT reste allumé en vol ; le copilote le prenait pour un autotest et ne voyait plus aucune menace. Corrigé.
-- Défense AUTO : un accrochage seul ne largue jamais rien (conseil seulement). Sur un TIR (voyant SAM ou CW allumé, ce qui s'est produit à chaque tir du SA-8) : paillettes tout de suite, puis toutes les 1,5 s tant que le voyant reste allumé, 6 paquets maximum. Réserve de 10. L'alerte dit « Tir sol-air ! Défends ! ».
-- Les voyants SAM / CW / AI et l'écran RWR sont notés à chaque changement, pour affiner.
-- JDAM : le mode PP / TOO est propre à chaque station. Le copilote le règle maintenant station par station sur la page MSN (TOO sur toutes les stations pour JDAM SUR WAYPOINT ; PP sur les stations programmées).
-- JDAM : la page MSN n'apparaît qu'une vingtaine de secondes après la mise en route de la bombe ; le copilote l'attend.
+- Nouveau : le copilote sur ta Galaxy Tab (ou ton téléphone), par le Wi-Fi. Bouton TABLETTE dans la fenêtre : scanne le QR code, tape le code à 6 chiffres, puis « Ajouter à l'écran d'accueil ».
+- Carte avec ton avion en direct : touche la carte pour créer un waypoint (son altitude est demandée à DCS), fais glisser un waypoint pour le déplacer, touche-le pour Y ALLER, JDAM, renommer, retirer.
+- Onglets PLAN (lire / envoyer à l'avion, waypoint suivant, retour base), JDAM (station → waypoint, TOO), TACAN, AVION (toutes les procédures, pilote auto, frein, ravito), JOURNAL des annonces.
+- Bandeau : carburant, altitude, vitesse, waypoint, défense OFF / CONSEIL / AUTO, PAILLETTES et LEURRE IR, alerte menace / tir en rouge.
+- Liaison DCS mise à jour (altitude du sol des points de la carte) : relance ta mission.
+- Si Windows demande l'autorisation du pare-feu : coche « Réseaux privés ».
