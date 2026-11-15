@@ -26,5 +26,8 @@
   "diag_depot": "",
   "diag_cle": "",
   "envoi_auto": true,
-  "radio_sol": "F8 F1"
+  "radio_sol": "F8 F1",
+  "tacan": [],
+  "nav_sequence_auto": true,
+  "boutons_hsi": {}
 }

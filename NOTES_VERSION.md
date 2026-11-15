@@ -1,8 +1,10 @@
-**Version 0.8.0** (après ton vol du 15 novembre, 01 h)
+**Version 0.9.0** — étape 2 : navigation
 
-- Démarrage plus rapide : manette sur IDLE au bon régime (plus de deuxième essai), alignement lancé pendant le démarrage du moteur gauche, systèmes réglés pendant qu'il monte en régime.
-- Défenses allumées avant le roulage : RWR (vérifié par son autotest), leurres sur ON, brouilleur en veille.
-- Fence in : le RWR n'est plus éteint par erreur ; s'il est éteint, il est allumé et vérifié.
-- Fence out : sortie des modes A/A et A/G (retour NAV).
-- Frein de parking : nouvelle séquence (tourner puis tirer pour serrer), avec plus de patience ; serré automatiquement à l'arrêt avion.
-- Largage sélectif : tu choisis les stations, une touche fait le reste (sélecteur, master arm, largage, remise en sécurité). Touche CHARGES / PYLÔNES pour choisir quoi larguer.
+- Page NAV du Stream Deck (ancienne page MISSION).
+- Waypoint précédent / suivant, avec cap et distance annoncés. Passage des waypoints annoncé (5 nautiques, passé) et waypoint suivant sélectionné automatiquement.
+- RETOUR BASE : waypoint 0, cap, distance et carburant estimé à l'arrivée.
+- Carnet de points : PRENDRE POINT sur la carte F10 (viseur au centre de l'écran), POINT AVION (position actuelle), ou coordonnées tapées dans la fenêtre (bouton POINTS ET TACAN).
+- CRÉER WAYPOINT : le point choisi devient un waypoint (à partir du 20), coordonnées précises et altitude. ALLER AU POINT : crée et met le cap dessus.
+- TACAN : canaux enregistrés dans la fenêtre, réglage en une touche (canal, X/Y, T/R ou A/A, guidage TACAN sur la HSI).
+- Pilote automatique : maintien d'altitude, couplé sur la navigation, déconnexion.
+- La liaison DCS est mise à jour : relance ta mission après la mise à jour.

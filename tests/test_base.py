@@ -92,3 +92,34 @@ class Bases(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Navigation(unittest.TestCase):
+    def test_coordonnees(self):
+        from copilote.navigation import lire_coordonnees
+        for texte in ('N 41°55\'12" E 041°51\'30"', "N41 55.200 E041 51.500", "41.92, 41.858333",
+                      "N 41 55 12 E 41 51 30"):
+            lat, lon = lire_coordonnees(texte)
+            self.assertAlmostEqual(lat, 41.92, places=3, msg=texte)
+            self.assertAlmostEqual(lon, 41.858333, places=3, msg=texte)
+        lat, lon = lire_coordonnees("S 33 51.5 W 070 30.0")
+        self.assertLess(lat, 0)
+        self.assertLess(lon, 0)
+        self.assertIsNone(lire_coordonnees("bonjour"))
+
+    def test_saisie_ufc(self):
+        from copilote.navigation import saisie_ufc
+        self.assertEqual(saisie_ufc(41.75, True), ("2", "4145", "0000"))
+        self.assertEqual(saisie_ufc(41.7, False), ("6", "4142", "0000"))
+        self.assertEqual(saisie_ufc(-120.5, False), ("4", "12030", "0000"))
+
+    def test_page_hsi_reelle(self):
+        from copilote.navigation import lire_hsi
+
+        class X:
+            vivant = True
+            ecrans = {4: "\x1fHSI_Main_Root\n\n\x1fTRCData\n121°/  0.0\n\x1fWYPT_Page_Number\n0\n"
+                         "\x1fGroundSpeed_TN_UP_Mode\n0G\n\x1fWYPT_1__id:13\nW\nY\nP\nT\n"}
+        info = lire_hsi(X())
+        self.assertEqual((info["wypt"], info["cap"], info["dist"]), (0, 121, 0.0))
+        self.assertFalse(info["wypt_encadre"])

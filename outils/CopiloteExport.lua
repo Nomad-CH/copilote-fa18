@@ -1,7 +1,8 @@
--- Lien entre DCS et le copilote F/A-18 (version 1).
+-- Lien entre DCS et le copilote F/A-18 (version 2).
 -- Charge par Export.lua. Envoie au copilote, sur cet ordinateur uniquement
 -- (127.0.0.1, port UDP 7790) : le texte du RWR, le texte des ecrans du
--- cockpit et l'emport. Ne commande rien dans l'avion.
+-- cockpit, l'emport, la position de l'avion et celle du centre de la vue
+-- (carte F10 : sert a prendre un point sur la carte). Ne commande rien dans l'avion.
 
 local CE = {
 	port = 7790,
@@ -28,7 +29,7 @@ local function json(v)
 		end) .. '"'
 	elseif t == "number" then
 		if v ~= v or v == math.huge or v == -math.huge then return "null" end
-		return string.format("%.6g", v)
+		return string.format("%.10g", v)
 	elseif t == "boolean" then
 		return tostring(v)
 	elseif t == "table" then
@@ -79,6 +80,26 @@ local function emport()
 		obus = type(p.Cannon) == "table" and p.Cannon.shells or 0 }
 end
 
+-- Position de l'avion, et point vise par la camera : sur la carte F10,
+-- c'est le centre de l'ecran (le viseur du copilote).
+local function positions()
+	local av, vue
+	local s = appel("LoGetSelfData")
+	if type(s) == "table" and type(s.LatLongAlt) == "table" then
+		av = { lat = s.LatLongAlt.Lat, lon = s.LatLongAlt.Long, alt = s.LatLongAlt.Alt,
+			cap = s.Heading }
+	end
+	local cam = appel("LoGetCameraPosition")
+	if type(cam) == "table" and type(cam.p) == "table" then
+		local g = appel("LoLoCoordinatesToGeoCoordinates", cam.p.x, cam.p.z)
+		if type(g) == "table" then
+			vue = { lat = g.latitude, lon = g.longitude, haut = cam.p.y,
+				sol = appel("LoGetAltitude", cam.p.x, cam.p.z) }
+		end
+	end
+	return av, vue
+end
+
 local function envoyer(paquet)
 	local msg = json(paquet)
 	if #msg <= CE.taille_max then
@@ -101,7 +122,9 @@ local function image()
 		CE.prochain_rwr = t + CE.periode_rwr
 		local self = appel("LoGetSelfData")
 		local leurres = appel("LoGetSnares")
+		local av, vue = positions()
 		envoyer({
+			pos = av, vue = vue,
 			k = "etat", t = t,
 			avion = type(self) == "table" and self.Name or "",
 			rwr = ecran(7),

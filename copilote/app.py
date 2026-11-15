@@ -35,6 +35,14 @@ class Copilote:
         self.boite = BoiteNoire(cfg.get("boite_noire_dossier") or DOSSIER_BOITE)
         self.ex = Executeur(bios, self.a, cfg, self.dire, export)
         self.ex.boite = self.boite
+        from .chemins import DONNEES
+        from .navigation import Carnet, SuiviWaypoints
+        import os as _os
+        self.nav = Carnet(_os.path.join(DONNEES, "points.json"))
+        self.nav.tacan = 0
+        self.ex.nav = self.nav
+        self.suivi_wpt = SuiviWaypoints()
+        self._dernier_suivi = 0.0
         self.surv = Surveillance(self.a, self.dire, self.ex, export, self.boite)
         self.page = "vol"
         self.historique = collections.deque(maxlen=40)
@@ -154,6 +162,64 @@ class Copilote:
             pass
         self.dire("Largage des pylônes." if self.cfg["largage_mode"] == "RACK" else "Largage des charges.")
 
+    # ------------------------------------------------------------ navigation
+    def _wpt_passe(self, numero):
+        if self.ex.en_cours:
+            self.dire(f"Waypoint {numero} passé.")
+            return
+        self.nav.passe = numero
+        self.ex.lancer("wpt_passe")
+
+    def prendre_point(self, sur_avion=False):
+        """Carte F10 : le point au centre de l'ecran (le viseur). Sinon : l'avion."""
+        from .navigation import Point
+        x = self.export
+        if x is None or not x.vivant:
+            self.dire("Négatif. Lien écrans absent.")
+            return None
+        if sur_avion:
+            pos = x.position
+            if not pos:
+                self.dire("Négatif. Position de l'avion inconnue.")
+                return None
+            p = Point(self.nav.nom_libre("Avion"), pos["lat"], pos["lon"], pos.get("alt"), "avion")
+        else:
+            vue = x.vue
+            if not vue:
+                self.dire("Négatif. Mets à jour la liaison DCS, puis relance la mission.")
+                return None
+            pos = x.position or {}
+            # vue cockpit : la camera est sur l'avion, ce n'est pas la carte
+            if pos and abs(vue["lat"] - pos.get("lat", 0)) < 0.002 \
+                    and abs(vue["lon"] - pos.get("lon", 0)) < 0.002:
+                self.dire("Ouvre la carte F10 et centre le viseur sur le point.")
+                return None
+            p = Point(self.nav.nom_libre("Point"), vue["lat"], vue["lon"], vue.get("sol"), "carte")
+        self.nav.ajouter(p)
+        texte = f"{p.nom} enregistré."
+        if x.position:
+            from .navigation import distance_cap
+            d, c = distance_cap(x.position["lat"], x.position["lon"], p.lat, p.lon)
+            if d >= 0.5:
+                texte += f" {d:.0f} nautiques au {round(c):03d}."
+        self.dire(texte)
+        self.boite.ecrire("point_pris", point=p.dict())
+        return p
+
+    def point_suivant(self, pas=1):
+        p = self.nav.suivant(pas)
+        self.dire(f"{p.nom} sélectionné." if p else "Carnet vide.")
+
+    def tacan_suivant(self):
+        from .navigation import tacan_choisi
+        liste = self.cfg.get("tacan") or []
+        if not liste:
+            self.dire("Aucun canal TACAN. Ajoute-les dans la fenêtre.")
+            return
+        self.nav.tacan = (getattr(self.nav, "tacan", 0) + 1) % len(liste)
+        t = tacan_choisi(self.cfg, self.nav)
+        self.dire(f"TACAN {t.get('canal')} {t.get('bande', 'X')}, {t.get('nom', '')}.")
+
     def radio(self, apres_menu=""):
         """Ouvre le menu radio de DCS puis enchaine des touches F (ex. "F5 F1 F1")."""
         threading.Thread(target=self._radio, args=(apres_menu,), daemon=True).start()
@@ -253,6 +319,13 @@ class Copilote:
                 self.surv.tick()
             except Exception as ex:   # la surveillance ne doit jamais arreter le copilote
                 self.boite.erreur("surveillance", ex)
+
+        if en_f18 and maintenant - self._dernier_suivi > 1.0 and self.export is not None:
+            self._dernier_suivi = maintenant
+            try:
+                self.suivi_wpt.tick(self.export, self.a, self.cfg, self.dire, self._wpt_passe)
+            except Exception as ex:
+                self.boite.erreur("suivi waypoints", ex)
 
         touches = pages.composer(self)
         cible, echeance = self._confirme

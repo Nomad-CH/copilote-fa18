@@ -276,6 +276,144 @@ def scenario_alignement(hornet, port=7790, stop=None, bouton_std_hdg="AMPCD_PB_2
         time.sleep(0.5)
 
 
+class FausseNav:
+    """HSI + UFC simules pour essayer la navigation sans DCS (boutons comme
+    dans ton cockpit : AMPCD 12/13 waypoint +/-, 11 WYPT, 5 TCN, 10 DATA, 19 PRECISE)."""
+
+    def __init__(self, hornet, lat=41.6, lon=41.6):
+        self.h = hornet
+        self.lu = 0
+        self.wypt, self.wypt_box, self.tcn_box = 1, False, False
+        self.data, self.precise = False, False
+        self.points = {0: (41.61, 41.60), 1: (41.80, 41.90), 2: (42.0, 42.2)}
+        self.avion = [lat, lon]
+        self.ufc_mode, self.cue = "", set()
+        self.saisie, self.champ, self.tacan_on, self.canal = "", None, False, ""
+        self.entrees = []      # ce qui a ete tape (pour les essais)
+        self.options("")
+
+    def options(self, mode):
+        self.ufc_mode = mode
+        self.cue = set()
+        opts = {"AP": ["ATTH", "BALT", "RALT", "HSEL", "CPL"],
+                "TCN": ["T/R", "RCV", "A/A", "X", "Y"],
+                "POSN": ["POSN", "", "ELEV", "", ""], "ELEV": ["FEET", "", "METR", "", ""],
+                }.get(mode, ["", "", "", "", ""])
+        self.opts = opts
+        for i, o in enumerate(opts, 1):
+            self.h.txt(f"UFC_OPTION_DISPLAY_{i}", o)
+            self.h.txt(f"UFC_OPTION_CUEING_{i}", "")
+        self.h.txt("UFC_SCRATCHPAD_STRING_1_DISPLAY", "OF" if mode == "TCN" and not self.tacan_on else "")
+        self.h.txt("UFC_SCRATCHPAD_STRING_2_DISPLAY", "F" if mode == "TCN" and not self.tacan_on else "")
+
+    def traiter(self):
+        nouv = self.h.recu[self.lu:]
+        self.lu = len(self.h.recu)
+        for ident, arg in nouv:
+            if arg != "1":
+                continue
+            if ident.startswith("AMPCD_PB_"):
+                pb = int(ident[-2:])
+                if self.data:
+                    if pb == 19:
+                        self.precise = not self.precise
+                    elif pb in (12, 13):
+                        self.wypt = max(0, self.wypt + (1 if pb == 12 else -1))
+                    elif pb == 10:
+                        self.data = False
+                        self.options("")
+                else:
+                    if pb in (12, 13):
+                        self.wypt = max(0, self.wypt + (1 if pb == 12 else -1))
+                    elif pb == 11:
+                        self.wypt_box, self.tcn_box = True, False
+                    elif pb == 5:
+                        self.tcn_box, self.wypt_box = True, False
+                    elif pb == 10:
+                        self.data = True
+                        self.options("POSN")
+            elif ident == "UFC_AP":
+                self.options("AP")
+            elif ident == "UFC_TCN":
+                self.options("TCN")
+            elif ident == "UFC_ONOFF" and self.ufc_mode == "TCN":
+                self.tacan_on = not self.tacan_on
+                self.options("TCN")
+            elif ident.startswith("UFC_OS"):
+                i = int(ident[-1])
+                o = self.opts[i - 1]
+                if self.ufc_mode == "POSN" and o == "POSN":
+                    self.champ = "lat"
+                elif self.ufc_mode == "POSN" and o == "ELEV":
+                    self.options("ELEV")
+                elif self.ufc_mode == "ELEV" and o == "FEET":
+                    self.champ = "elev"
+                elif o:
+                    self.h.txt(f"UFC_OPTION_CUEING_{i}", ":")
+            elif ident == "UFC_CLR":
+                self.saisie = ""
+                if self.data:
+                    self.options("POSN")
+            elif ident == "UFC_ENT":
+                self.entrees.append(self.saisie)
+                if self.ufc_mode == "TCN":
+                    self.canal = self.saisie
+                    self.h.txt("UFC_SCRATCHPAD_NUMBER_DISPLAY", self.saisie)
+                self.saisie = ""
+                self._maj_point()
+            elif ident.startswith("UFC_") and ident[4:].isdigit():
+                self.saisie += ident[4:]
+
+    def _maj_point(self):
+        e = self.entrees
+        # hemisphere+DDMM, decimales, hemisphere+DDDMM, decimales
+        if (len(e) >= 4 and self.data and e[-4][:1] in "28" and len(e[-4]) == 5
+                and e[-2][:1] in "64" and len(e[-2]) >= 5):
+            try:
+                la, lo = e[-4], e[-2]
+                lat = int(la[1:3]) + (int(la[3:5]) + int(e[-3]) / 10000) / 60
+                lon = int(lo[1:-2]) + (int(lo[-2:]) + int(e[-1]) / 10000) / 60
+                self.points[self.wypt] = (lat if la[0] == "2" else -lat, lon if lo[0] == "6" else -lon)
+            except (ValueError, IndexError):
+                pass
+
+    def page(self):
+        if self.data:
+            lat, lon = self.points.get(self.wypt, (0.0, 0.0))
+            t = "\x1fWYPT_Page_Number\n%d\n\x1fPRECISE_1__id:30\nPRECISE\n" % self.wypt
+            if self.precise:
+                t += "\x1fPRECISE_1_box__id:31\n\n"
+            t += "\x1fLAT\nN %d°%06.3f'\n" % (int(lat), (lat - int(lat)) * 60)
+            return t
+        from .navigation import distance_cap
+        lat, lon = self.points.get(self.wypt, (0.0, 0.0))
+        dist, cap = distance_cap(self.avion[0], self.avion[1], lat, lon)
+        t = "\x1fHSI_Main_Root\n\n\x1fWYPT_Page_Number\n%d\n" % self.wypt
+        t += "\x1fTRCData\n%03d°/ %5.1f\n\x1fGroundSpeed_TN_UP_Mode\n420G\n" % (cap, dist)
+        t += "\x1fWYPT_1__id:13\nW\nY\nP\nT\n"
+        if self.wypt_box:
+            t += "\x1fWYPT_1_box__id:14\n\n"
+        t += "\x1fTCN_1__id:6\nT\nC\nN\n"
+        if self.tcn_box:
+            t += "\x1fTCN_1_box__id:7\n\n"
+        return t
+
+
+def scenario_navigation(hornet, port=7790, stop=None, nav=None):
+    import json
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    nav = nav or FausseNav(hornet)
+    while not (stop and stop.is_set()):
+        with hornet.verrou:
+            nav.traiter()
+        paquet = {"k": "etat", "t": 0, "avion": "FA-18C_hornet", "rwr": "",
+                  "pos": {"lat": nav.avion[0], "lon": nav.avion[1], "alt": 3000, "cap": 0},
+                  "vue": {"lat": 41.75, "lon": 41.70, "sol": 120.0, "haut": 20000}}
+        s.sendto(json.dumps(paquet).encode(), ("127.0.0.1", port))
+        s.sendto(json.dumps({"k": "ecran", "i": 4, "txt": nav.page()}).encode(), ("127.0.0.1", port))
+        time.sleep(0.1)
+
+
 def lancer(dossier_json, stop):
     """Demarre la demo en arriere-plan : avion au sol, menaces en boucle."""
     hornet = FauxHornet(dossier_json, False)

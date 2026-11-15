@@ -121,6 +121,8 @@ class ExportDCS:
         self.ecrans = {}            # numero -> texte
         self.emport = None          # dict envoye par le Lua
         self.leurres = None         # (paillettes, leurres IR)
+        self.position = None        # avion : lat, lon, alt (m), cap (rad)
+        self.vue = None             # centre de la vue / carte F10 : lat, lon, sol (m), haut (m)
         self._rwr = collections.deque(maxlen=40)   # (heure, tuple de symboles)
         self._verrou = threading.Lock()
         self._stop = False
@@ -186,6 +188,8 @@ class ExportDCS:
             l = paquet.get("leurres")
             self.leurres = tuple(int(x) for x in l) if l else None
             self.ecrans[7] = paquet.get("rwr") or ""
+            self.position = paquet.get("pos") or None
+            self.vue = paquet.get("vue") or None
             self.dernier = maintenant
         elif k == "ecran":
             try:

@@ -772,3 +772,8 @@ class Executeur:
         finally:
             self.etape = ""
             self.en_cours = None
+
+
+# Etape 2 : navigation (waypoints, carnet de points, TACAN, pilote automatique)
+from .navigation import PROCEDURES_NAV  # noqa: E402
+PROCEDURES.update(PROCEDURES_NAV)

@@ -302,29 +302,59 @@ def _a_venir(app, titre, quoi):
     return Touche(titre, "", INACTIF, lambda: app.dire(f"{quoi} : pas encore disponible."))
 
 
+def _wpt(app):
+    from .navigation import lire_hsi
+    info = lire_hsi(app.export) if app.export is not None else None
+    if info is None or info["wypt"] is None:
+        return Touche("WAYPOINT", "HSI ?", SOMBRE)
+    detail = ""
+    if info["cap"] is not None and info["dist"] is not None:
+        detail = f"\n{info['cap']:03d}° {info['dist']:.0f}NM"
+    guide = VERT if info["wypt_encadre"] else GRIS
+    return Touche(f"WPT {info['wypt']}", detail.strip() or "-", guide)
+
+
+def _point(app):
+    p = app.nav.point
+    if p is None:
+        return Touche("CARNET", "VIDE", SOMBRE)
+    n = len(app.nav.points)
+    return Touche(f"POINT {app.nav.choisi + 1}/{n}", p.nom[:10], SOMBRE)
+
+
+def _tacan(app):
+    from .navigation import tacan_choisi
+    t = tacan_choisi(app.cfg, app.nav)
+    if t is None:
+        return Touche("TACAN", "AUCUN", SOMBRE, app.tacan_suivant)
+    return Touche("TACAN", f"{t.get('canal')}{t.get('bande', 'X')}\n{str(t.get('nom', ''))[:8]}",
+                  SOMBRE, app.tacan_suivant)
+
+
 def page_mission(app):
+    """Page NAV : waypoints, carnet de points (carte F10), TACAN, pilote automatique."""
     return [
-        _a_venir(app, "CAPTURER\nPOINT", "Capture d'un point sur la carte"),
-        _a_venir(app, "ENVOYER\nÀ L'AVION", "Envoi des points à l'avion"),
-        _a_venir(app, "POINT\nPRÉCÉDENT", "Navigation entre les points"),
-        _a_venir(app, "POINT\nACTIF", "Navigation entre les points"),
-        _a_venir(app, "POINT\nSUIVANT", "Navigation entre les points"),
-        _a_venir(app, "FLIR SUR\nLE POINT", "FLIR sur un point"),
+        _proc(app, "wpt_moins", "WPT\n◀"),
+        _wpt(app),
+        _proc(app, "wpt_plus", "WPT\n▶"),
+        _proc(app, "retour_base", "RETOUR\nBASE"),
+        Touche("PRENDRE\nPOINT", "carte F10", BLEU, app.prendre_point),
+        Touche("POINT\nAVION", "ici", BLEU, lambda: app.prendre_point(True)),
 
-        _a_venir(app, "DÉSIGNER\nCIBLE", "Désignation de cible"),
-        _a_venir(app, "CODE\nLASER", "Réglage du code laser"),
-        _a_venir(app, "JDAM\nCIBLES", "Affectation des JDAM"),
-        _a_venir(app, "PROGRAM.\nJDAM", "Programmation des JDAM"),
-        _ddi(app),
-        _marquer(app),
+        Touche("POINT\n◀", "", GRIS, lambda: app.point_suivant(-1)),
+        _point(app),
+        Touche("POINT\n▶", "", GRIS, lambda: app.point_suivant(1)),
+        _proc(app, "point_wpt", "CRÉER\nWAYPOINT"),
+        _proc(app, "aller_point", "ALLER AU\nPOINT"),
+        Touche("VISEUR\nCARTE", "", GRIS, lambda: app.fenetre("viseur")),
 
-        _a_venir(app, "TACAN", "Réglage du TACAN"),
-        _a_venir(app, "ICLS", "Réglage de l'ICLS"),
-        _a_venir(app, "PILOTE\nAUTO", "Pilote automatique"),
-        _a_venir(app, "PROG.\nLEURRES", "Programmes de leurres"),
+        _tacan(app),
+        _proc(app, "tacan", "RÉGLER\nTACAN"),
+        _proc(app, "ap_balt", "A/P\nALTITUDE"),
+        _proc(app, "ap_cpl", "A/P\nNAV"),
+        Touche("A/P\nOFF", "", ROUGE, lambda: app.ex.lancer("ap_off")),
         Touche("FENÊTRE", getattr(app, "mode_fenetre", "").upper(), GRIS,
                lambda: app.fenetre("suivante")),
-        Touche("COIN\nFENÊTRE", "", GRIS, lambda: app.fenetre("coin")),
     ] + _ligne_etat(app)
 
 
@@ -389,7 +419,7 @@ def composer(app):
     navigation = [
         nav("vol", "VOL"),
         nav("combat", "COMBAT"),
-        nav("mission", "MISSION"),
+        nav("mission", "NAV"),
         nav("avion", "AVION"),
     ]
     touches = []

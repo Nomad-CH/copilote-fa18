@@ -153,8 +153,11 @@ class Interface:
                                 self.p_bouton)
         self.b_ravito = Bouton(grille, "RADIO RAVITO", self.regler_ravito, self.p_bouton)
         self.b_envoi = Bouton(grille, "ENVOI À CLAUDE", self.regler_envoi, self.p_bouton)
+        self.b_carnet = Bouton(grille, "POINTS ET TACAN", lambda: CarnetNav(self), self.p_bouton)
+        self.b_viseur = Bouton(grille, "VISEUR CARTE", self.basculer_viseur, self.p_bouton)
         for i, b in enumerate((self.b_voix, self.b_choix, self.b_touches, self.b_diag,
                                self.b_demo, self.b_virtuel, self.b_ravito, self.b_envoi,
+                               self.b_carnet, self.b_viseur,
                                self.b_maj, self.b_reduire)):
             b.grid(row=i // 2, column=i % 2, sticky="ew", padx=3, pady=3)
 
@@ -250,6 +253,8 @@ class Interface:
                 if action == "suivante":
                     suivant = {"pleine": "barre", "barre": "cachee", "cachee": "pleine"}
                     self.changer_mode(suivant[self.mode])
+                elif action == "viseur":
+                    self.basculer_viseur()
                 elif action == "coin":
                     self.coin = (self.coin + 1) % len(COINS)
                     if self.mode != "barre":
@@ -408,6 +413,56 @@ class Interface:
 
     def regler_envoi(self):
         ReglageEnvoi(self)
+
+    # ------------------------------------------------------- viseur carte F10
+    def basculer_viseur(self):
+        """Croix au centre de l'ecran de DCS : centre la carte F10 dessus,
+        puis PRENDRE POINT. Ne prend jamais la main sur DCS (clics traverses)."""
+        v = getattr(self, "viseur", None)
+        if v is not None:
+            v.destroy()
+            self.viseur = None
+            self.app.dire("Viseur carte retiré.")
+            return
+        cx, cy = self.racine.winfo_screenwidth() // 2, self.racine.winfo_screenheight() // 2
+        try:
+            import ctypes
+            from ctypes import wintypes
+            from .clavier import trouver_fenetre_dcs
+            h = trouver_fenetre_dcs()
+            if h:
+                rect = wintypes.RECT()
+                ctypes.windll.user32.GetClientRect(h, ctypes.byref(rect))
+                pt = wintypes.POINT(rect.right // 2, rect.bottom // 2)
+                ctypes.windll.user32.ClientToScreen(h, ctypes.byref(pt))
+                cx, cy = pt.x, pt.y
+        except Exception:
+            pass
+        t = 60
+        v = self.viseur = tk.Toplevel(self.racine)
+        v.overrideredirect(True)
+        v.attributes("-topmost", True)
+        cle = "#010203"
+        v.configure(bg=cle)
+        try:
+            v.attributes("-transparentcolor", cle)
+        except tk.TclError:
+            pass
+        v.geometry(f"{2 * t}x{2 * t}+{cx - t}+{cy - t}")
+        c = tk.Canvas(v, width=2 * t, height=2 * t, bg=cle, highlightthickness=0)
+        c.pack()
+        for x0, y0, x1, y1 in ((0, t, t - 8, t), (t + 8, t, 2 * t, t),
+                               (t, 0, t, t - 8), (t, t + 8, t, 2 * t)):
+            c.create_line(x0, y0, x1, y1, fill="#FF3B30", width=2)
+        c.create_oval(t - 3, t - 3, t + 3, t + 3, outline="#FF3B30", width=2)
+        try:      # les clics traversent le viseur
+            import ctypes
+            h = ctypes.windll.user32.GetParent(v.winfo_id())
+            style = ctypes.windll.user32.GetWindowLongW(h, -20)
+            ctypes.windll.user32.SetWindowLongW(h, -20, style | 0x80000 | 0x20)
+        except Exception:
+            pass
+        self.app.dire("Viseur carte en place. Centre la carte F10 sur le point, puis prends le point.")
 
     def basculer_demo(self):
         from . import demo
@@ -633,3 +688,127 @@ class ReglageEnvoi:
         sauver_config(cfg)
         self.ui.app.dire("Envoi des diagnostics configuré.")
         self.f.destroy()
+
+
+class CarnetNav:
+    """Points (taper des coordonnees, voir, supprimer) et canaux TACAN."""
+
+    def __init__(self, ui):
+        self.ui = ui
+        self.nav = ui.app.nav
+        f = self.f = tk.Toplevel(ui.racine)
+        f.title("Points et TACAN")
+        f.configure(bg=FOND)
+        f.transient(ui.racine)
+
+        tk.Label(f, text="CARNET DE POINTS", bg=FOND, fg=VERT, font=ui.p_titre).pack(pady=(12, 2))
+        tk.Label(f, text="Pris sur la carte F10, à la position de l'avion, ou tapés ici.\n"
+                 "Le point sélectionné peut devenir un waypoint (page NAV).",
+                 bg=FOND, fg=PALE, font=ui.p_petit, justify="center").pack(pady=(0, 6))
+        self.liste = tk.Listbox(f, width=60, height=8, bg=PANNEAU, fg=VERT, font=ui.p_texte,
+                                selectbackground=LIGNE, relief="flat", highlightthickness=1,
+                                highlightbackground=LIGNE)
+        self.liste.pack(padx=14, fill="x")
+        self.liste.bind("<<ListboxSelect>>", self.choisir)
+        ligne = tk.Frame(f, bg=FOND)
+        ligne.pack(fill="x", padx=14, pady=4)
+        self.v_nom = tk.StringVar()
+        self.v_coord = tk.StringVar()
+        for texte, var, largeur in (("Nom", self.v_nom, 12), ("Coordonnées", self.v_coord, 30)):
+            tk.Label(ligne, text=texte, bg=FOND, fg=PALE, font=ui.p_petit).pack(side="left", padx=(0, 4))
+            tk.Entry(ligne, textvariable=var, width=largeur, bg=PANNEAU, fg=VERT,
+                     insertbackground=VERT, relief="flat", font=ui.p_texte, highlightthickness=1,
+                     highlightbackground=LIGNE).pack(side="left", padx=(0, 8))
+        tk.Label(f, text="Exemples : N 41°55'12\" E 041°51'30\"   ou   N41 55.200 E041 51.500   ou   41.92, 41.86",
+                 bg=FOND, fg=GRIS, font=ui.p_petit).pack()
+        b = tk.Frame(f, bg=FOND)
+        b.pack(pady=6)
+        Bouton(b, "AJOUTER", self.ajouter, ui.p_bouton).pack(side="left", padx=4)
+        Bouton(b, "SUPPRIMER", self.supprimer, ui.p_bouton).pack(side="left", padx=4)
+        self.l_info = tk.Label(f, text="", bg=FOND, fg=AMBRE, font=ui.p_petit)
+        self.l_info.pack()
+
+        tk.Label(f, text="CANAUX TACAN", bg=FOND, fg=VERT, font=ui.p_titre).pack(pady=(10, 2))
+        self.l_tacan = tk.Listbox(f, width=60, height=5, bg=PANNEAU, fg=VERT, font=ui.p_texte,
+                                  selectbackground=LIGNE, relief="flat", highlightthickness=1,
+                                  highlightbackground=LIGNE)
+        self.l_tacan.pack(padx=14, fill="x")
+        ligne = tk.Frame(f, bg=FOND)
+        ligne.pack(fill="x", padx=14, pady=4)
+        self.v_tnom, self.v_canal = tk.StringVar(), tk.StringVar()
+        self.v_bande, self.v_mode = tk.StringVar(value="X"), tk.StringVar(value="T/R")
+        for texte, var, largeur in (("Nom", self.v_tnom, 14), ("Canal", self.v_canal, 4)):
+            tk.Label(ligne, text=texte, bg=FOND, fg=PALE, font=ui.p_petit).pack(side="left", padx=(0, 4))
+            tk.Entry(ligne, textvariable=var, width=largeur, bg=PANNEAU, fg=VERT,
+                     insertbackground=VERT, relief="flat", font=ui.p_texte, highlightthickness=1,
+                     highlightbackground=LIGNE).pack(side="left", padx=(0, 8))
+        for var, choix in ((self.v_bande, ("X", "Y")), (self.v_mode, ("T/R", "A/A"))):
+            m = tk.OptionMenu(ligne, var, *choix)
+            m.configure(bg=PANNEAU, fg=VERT, activebackground=LIGNE, relief="flat",
+                        highlightthickness=0, font=ui.p_petit)
+            m.pack(side="left", padx=2)
+        tk.Label(f, text="T/R : base ou porte-avions.  A/A : ravitailleur ou ailier.",
+                 bg=FOND, fg=GRIS, font=ui.p_petit).pack()
+        b = tk.Frame(f, bg=FOND)
+        b.pack(pady=(6, 14))
+        Bouton(b, "AJOUTER CANAL", self.ajouter_tacan, ui.p_bouton).pack(side="left", padx=4)
+        Bouton(b, "SUPPRIMER CANAL", self.supprimer_tacan, ui.p_bouton).pack(side="left", padx=4)
+        self.remplir()
+
+    def remplir(self):
+        self.liste.delete(0, "end")
+        for p in self.nav.points:
+            alt = "" if p.alt_m is None else f"  {round(p.alt_m * 3.28084):>5} ft"
+            self.liste.insert("end", f"{p.nom:<10} {p.texte()}{alt}")
+        if self.nav.points:
+            self.liste.selection_set(self.nav.choisi)
+        self.l_tacan.delete(0, "end")
+        for t in self.ui.cfg.get("tacan") or []:
+            self.l_tacan.insert("end", f"{t.get('canal'):>3}{t.get('bande', 'X')}  {t.get('mode', 'T/R'):<4} {t.get('nom', '')}")
+
+    def choisir(self, _e=None):
+        s = self.liste.curselection()
+        if s:
+            self.nav.choisi = s[0]
+
+    def ajouter(self):
+        from .navigation import Point, lire_coordonnees
+        c = lire_coordonnees(self.v_coord.get())
+        if c is None:
+            self.l_info.configure(text="Coordonnées non comprises. Regarde les exemples.")
+            return
+        nom = self.v_nom.get().strip() or self.nav.nom_libre("Point")
+        self.nav.ajouter(Point(nom[:12], c[0], c[1], None, "tapé"))
+        self.v_nom.set("")
+        self.v_coord.set("")
+        self.l_info.configure(text=f"{nom} ajouté.", fg=VERT)
+        self.remplir()
+
+    def supprimer(self):
+        s = self.liste.curselection()
+        if s:
+            self.nav.supprimer(s[0])
+            self.remplir()
+
+    def ajouter_tacan(self):
+        try:
+            canal = int(self.v_canal.get())
+            assert 1 <= canal <= 126
+        except (ValueError, AssertionError):
+            self.l_info.configure(text="Canal TACAN : un nombre de 1 à 126.")
+            return
+        liste = self.ui.cfg.setdefault("tacan", [])
+        liste.append({"nom": self.v_tnom.get().strip()[:14], "canal": canal,
+                      "bande": self.v_bande.get(), "mode": self.v_mode.get()})
+        sauver_config(self.ui.cfg)
+        self.v_tnom.set("")
+        self.v_canal.set("")
+        self.remplir()
+
+    def supprimer_tacan(self):
+        s = self.l_tacan.curselection()
+        liste = self.ui.cfg.get("tacan") or []
+        if s and s[0] < len(liste):
+            del liste[s[0]]
+            sauver_config(self.ui.cfg)
+            self.remplir()
