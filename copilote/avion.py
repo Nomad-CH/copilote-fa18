@@ -103,11 +103,8 @@ class Avion:
 
     @property
     def rwr_allume(self):
-        """Vrai / Faux d'apres l'ecran du RWR (vide quand il est eteint), None si inconnu."""
-        x = getattr(self, "export", None)
-        if x is None or not x.vivant:
-            return None
-        return bool(x.ecrans.get(7))
+        """Dernier etat connu du RWR (None = inconnu) : confirme par son autotest."""
+        return getattr(self, "rwr_etat", None)
 
     # --- configuration
     @property

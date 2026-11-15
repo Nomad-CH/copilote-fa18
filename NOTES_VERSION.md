@@ -1,7 +1,8 @@
-**Version 0.7.1** (corrections après ton vol du 15 novembre)
+**Version 0.8.0** (après ton vol du 15 novembre, 01 h)
 
-- Frein de parking : la touche fait maintenant les deux temps (tirer puis tourner ; tourner puis repousser) et vérifie le résultat.
-- Arrêt avion : n'est plus refusé à l'arrêt (la vitesse indiquée affiche quelques nœuds avec le vent).
-- Alignement : « Avion prêt. » annoncé à QUAL OK. Bouton STD HDG 19 essayé en premier.
-- RWR : le copilote ne coupe plus le RWR par erreur au Fence in ; silence pendant l'autotest après chaque mise sous tension.
-- DEMANDE RAVITO : au sol, équipe au sol → réarmer et refaire le plein (menu radio, F8, F1). En vol : séquence ravitailleur réglable.
+- Démarrage plus rapide : manette sur IDLE au bon régime (plus de deuxième essai), alignement lancé pendant le démarrage du moteur gauche, systèmes réglés pendant qu'il monte en régime.
+- Défenses allumées avant le roulage : RWR (vérifié par son autotest), leurres sur ON, brouilleur en veille.
+- Fence in : le RWR n'est plus éteint par erreur ; s'il est éteint, il est allumé et vérifié.
+- Fence out : sortie des modes A/A et A/G (retour NAV).
+- Frein de parking : nouvelle séquence (tourner puis tirer pour serrer), avec plus de patience ; serré automatiquement à l'arrêt avion.
+- Largage sélectif : tu choisis les stations, une touche fait le reste (sélecteur, master arm, largage, remise en sécurité). Touche CHARGES / PYLÔNES pour choisir quoi larguer.

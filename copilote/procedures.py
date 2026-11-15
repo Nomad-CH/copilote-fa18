@@ -201,6 +201,106 @@ class Appelle:
         self.fonction(r)
 
 
+# ---------------------------------------------------------- frein de parking
+def manoeuvrer_frein(b, a, attendre, serrer, boite=None):
+    """Poignee de frein du Hornet. Releve pendant tes vols du 15 novembre :
+    serre = tiree (PULL 1) et tournee (ROTATE 2) ; relache = PULL 0.
+    Au relachement, DCS met plusieurs secondes a bouger la poignee : on attend.
+    Au serrage, tirer ne marche pas tant que la poignee n'est pas tournee :
+    on tourne d'abord, puis on tire (et on essaie aussi la bascule TOGGLE).
+    Chaque etape est notee dans la boite noire pour la suite."""
+    trace = []
+
+    def note(etape):
+        trace.append((etape, b.lire("EMERGENCY_PARKING_BRAKE_PULL"),
+                      b.lire("EMERGENCY_PARKING_BRAKE_ROTATE")))
+
+    def attendre_etat(delai):
+        fin = time.time() + delai
+        while time.time() < fin:
+            if a.frein_parking == serrer:
+                return True
+            attendre(0.25)
+        return a.frein_parking == serrer
+
+    note("debut")
+    if a.frein_parking == serrer:
+        return True
+    if serrer:
+        essais = [("ROTATE", 2), ("PULL", 1), ("PULL", "TOGGLE"), ("ROTATE", 2)]
+    else:
+        essais = [("ROTATE", 1), ("PULL", 0), ("PULL", "TOGGLE")]
+    ok = False
+    for organe, valeur in essais:
+        ident = "EMERGENCY_PARKING_BRAKE_" + organe
+        if organe == "PULL" and valeur != "TOGGLE" and b.lire(ident) == valeur:
+            continue
+        b.envoyer(ident, valeur)
+        ok = attendre_etat(2.5)
+        note(f"{organe} {valeur}")
+        if ok:
+            break
+    if not ok:
+        ok = attendre_etat(3)
+        note("fin")
+    if boite is not None:
+        boite.ecrire("frein_parking", serrer=serrer, reussi=ok, trace=trace)
+    return ok
+
+
+def _serrer_frein(r):
+    if not manoeuvrer_frein(r.b, r.a, r.attendre, True, getattr(r, "boite", None)):
+        r.non_confirmes.append("frein de parking")
+        r.dire("Frein de parking à ta charge.")
+
+
+# ---------------------------------------------------------- RWR
+def allumer_rwr(r):
+    """Le RWR n'a pas de voyant de marche fiable dans DCS-BIOS. Mais a chaque
+    mise sous tension il fait son autotest et affiche des symboles (Dog Ear,
+    Snow Drift) : on appuie, et si rien ne s'affiche en 12 s c'est qu'on vient
+    de l'eteindre -> on rappuie."""
+    x = r.export
+    if x is None or not x.vivant:
+        r.b.envoyer("RWR_POWER_BTN", 1); r.attendre(0.3); r.b.envoyer("RWR_POWER_BTN", 0)
+        r.a.rwr_appui = time.time()
+        return
+    if x.ecrans.get(7):          # l'ecran du RWR a du contenu : il est deja allume
+        r.a.rwr_etat = True
+        return
+    for essai in range(2):
+        r.b.envoyer("RWR_POWER_BTN", 1)
+        r.attendre(0.3)
+        r.b.envoyer("RWR_POWER_BTN", 0)
+        r.a.rwr_appui = time.time()
+        fin = r.horloge() + 12
+        while r.horloge() < fin:
+            if x.ecrans.get(7):
+                r.a.rwr_etat = True
+                return
+            r.attendre(0.3)
+        r.a.rwr_etat = False
+    if getattr(r, "boite", None) is not None:
+        r.boite.ecrire("rwr_sans_autotest")
+    r.non_confirmes.append("RWR")
+    r.dire("RWR non confirmé. Vérifie-le.")
+
+
+def _rwr_si_besoin(r):
+    if r.a.rwr_etat is not True:
+        allumer_rwr(r)
+
+
+def _modes_off(r):
+    """Fence out : sort des modes maitres A/A et A/G (retour NAV)."""
+    for mode in ("MASTER_MODE_AA", "MASTER_MODE_AG"):
+        if r.a.allume(mode + "_LT"):
+            r.b.envoyer(mode, 1)
+            r.attendre(0.25)
+            r.b.envoyer(mode, 0)
+            r.attendre(0.5)
+
+
 # ---------------------------------------------------------- actions libres
 def _regler_bingo(r):
     """Monte le BINGO de l'IFEI jusqu'a la valeur de config (0 = ne rien faire)."""
@@ -339,34 +439,34 @@ def _demarrage(porte_avions):
         Dit("APU prêt. Démarrage moteur droit."),
         Regle("ENGINE_CRANK_SW", "DROITE", verifie=False),
         Attend(lambda a: a.rpm_d >= 18, 45, "moteur droit à 18 %"),
+        Attend(lambda a: a.rpm_d >= 22, 15, "moteur droit à 22 %", bloquant=False),
         Touche("gaz_droit_idle", "Manette droite sur IDLE, à toi.",
-              reussite=lambda a: a.rpm_d >= 30, delai=10),
+              reussite=lambda a: a.rpm_d >= 30, delai=6),
         Attend(lambda a: a.rpm_d >= 60, 90, "moteur droit au ralenti"),
-        # --- ecrans
+        # --- ecrans et centrale : l'alignement tourne pendant le moteur gauche
         Regle("LEFT_DDI_BRT_SELECT", "DAY"),
         Regle("RIGHT_DDI_BRT_SELECT", "DAY"),
         Regle("AMPCD_BRT_CTL", 65535),
         Regle("HUD_SYM_BRT", 65535),
-        # --- moteur gauche
-        Dit("Moteur droit stabilisé. Démarrage moteur gauche."),
-        Regle("ENGINE_CRANK_SW", "GAUCHE", verifie=False),
-        Attend(lambda a: a.rpm_g >= 18, 45, "moteur gauche à 18 %"),
-        Touche("gaz_gauche_idle", "Manette gauche sur IDLE, à toi.",
-              reussite=lambda a: a.rpm_g >= 30, delai=10),
-        Attend(lambda a: a.rpm_g >= 60, 90, "moteur gauche au ralenti"),
-        # --- systemes
-        Appelle(_fermer_verriere, "fermeture verrière"),
         Regle("INS_SW", "CV" if porte_avions else "GND"),
         Appelle(_alignement_rapide, "alignement rapide STD HDG"),
+        # --- moteur gauche, et les systemes pendant qu'il monte en regime
+        Dit("Moteur droit stabilisé. Démarrage moteur gauche."),
+        Regle("ENGINE_CRANK_SW", "GAUCHE", verifie=False),
+        Appelle(_fermer_verriere, "fermeture verrière"),
         Regle("RADAR_SW", "OPR"),
         Regle("OBOGS_SW", 1),
         Regle("FLIR_SW", "STBY"),
-        Appui("RWR_POWER_BTN"),          # RWR eteint apres un demarrage a froid
         Regle("CMSD_DISPENSE_SW", "ON"),
         Regle("ECM_MODE_SW", "STBY"),
-        Appelle(_hmd, "casque HMD"),
         Regle("UFC_COMM1_VOL", 45000, verifie=False),
         Regle("UFC_COMM2_VOL", 45000, verifie=False),
+        Attend(lambda a: a.rpm_g >= 22, 45, "moteur gauche à 22 %", bloquant=False),
+        Touche("gaz_gauche_idle", "Manette gauche sur IDLE, à toi.",
+              reussite=lambda a: a.rpm_g >= 30, delai=6),
+        Appelle(allumer_rwr, "RWR"),
+        Attend(lambda a: a.rpm_g >= 60, 90, "moteur gauche au ralenti"),
+        Appelle(_hmd, "casque HMD"),
         Appui("FCS_RESET_BTN", 0.4),
         Regle("FLAP_SW", "HALF"),
         Appui("TO_TRIM_BTN", 2.5),
@@ -375,8 +475,8 @@ def _demarrage(porte_avions):
         *FEUX_ON,
         Regle("EJECTION_SEAT_ARMED", "ARMED"),
         Appelle(_regler_bingo, "réglage BINGO"),
-        Dit("Deux moteurs au ralenti. Centrale en alignement, passage IFA automatique "
-            "à QUAL OK. Test FCS à ta charge."),
+        Dit("Deux moteurs au ralenti. Défenses en ligne : RWR, leurres, brouilleur en veille. "
+            "Passage IFA automatique à QUAL OK. Test FCS à ta charge."),
     ]
 
 
@@ -384,6 +484,7 @@ ARRET = [
     AU_SOL,
     Exige(lambda a: a.immobile, "Négatif. Avion en mouvement."),
     Dit("Séquence d'arrêt engagée."),
+    Appelle(_serrer_frein, "frein de parking"),
     Regle("MASTER_ARM_SW", "SAFE"),
     Regle("EJECTION_SEAT_ARMED", "SAFE"),
     Regle("FLAP_SW", "AUTO"),
@@ -459,7 +560,7 @@ APRES_DECOLLAGE = [
 FENCE_IN = [
     Regle("MASTER_ARM_SW", "ARM"),
     Regle("RADAR_SW", "OPR"),
-    Si(lambda a: a.rwr_allume is False and not a.au_sol, [Appui("RWR_POWER_BTN")]),
+    Appelle(_rwr_si_besoin, "RWR"),
     Regle("CMSD_DISPENSE_SW", "ON"),
     Regle("ECM_MODE_SW", "REC"),
     Regle("IR_COOL_SW", "NORM"),
@@ -469,11 +570,12 @@ FENCE_IN = [
 ]
 
 FENCE_OUT = [
-        Regle("MASTER_ARM_SW", "SAFE"),
+    Regle("MASTER_ARM_SW", "SAFE"),
+    Appelle(_modes_off, "modes A/A et A/G"),
     Regle("LTD_R_SW", "SAFE"),
     Regle("ECM_MODE_SW", "STBY"),
     *FEUX_ON,
-    Dit("Fence out effectué. Armement sur sécurité, feux allumés."),
+    Dit("Fence out effectué. Armement sur sécurité, mode NAV, feux allumés."),
 ]
 
 _TROP_VITE = Exige(lambda a: a.vitesse <= 250,

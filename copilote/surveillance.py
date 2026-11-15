@@ -175,6 +175,8 @@ class Surveillance:
         on se tait 25 s apres l'allumage, et pendant le demarrage."""
         maintenant = time.time()
         allume = bool(self.export.ecrans.get(7))
+        if allume:
+            self.a.rwr_etat = True
         if allume and not self._rwr_allume:
             self._rwr_muet_jusqua = maintenant + 25
         self._rwr_allume = allume

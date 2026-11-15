@@ -109,9 +109,9 @@ def page_armes(app):
         _selecteur(app, "ECM_MODE_SW", "BROUILLEUR", 5,
                    {"XMIT": ROUGE, "REC": VERT, "STBY": AMBRE, "BIT": AMBRE}),
         _larguer(app, "flare"),
-        _selecteur(app, "SEL_JETT_KNOB", "SÉL. LARGAGE", 5,
-                   {"SAFE": VERT, "L FUS": AMBRE, "R FUS": AMBRE, "RACK": AMBRE, "STORES": AMBRE}),
-        Touche("LARGAGE\nSÉLECTIF", "", ROUGE, lambda: app.appui_bouton("SEL_JETT_BTN", 0.5), True),
+        Touche("LARGAGE", "PYLÔNES" if app.cfg.get("largage_mode") == "RACK" else "CHARGES",
+               AMBRE, app.mode_largage),
+        _largage_selectif(app),
         Touche("LARGAGE\nURGENCE", "", ROUGE, lambda: app.appui_bouton("EMER_JETT_BTN", 0.5), True),
     ] + [_station(app, bouton, nom, num) for bouton, nom, num in stations] + [_marquer(app)]
 
@@ -162,6 +162,12 @@ def _station(app, bouton, nom, numero):
         contenu = f"{_abrege(arme)}\nx{n}" if n else "VIDE"
     return Touche(f"STA {numero} {nom}", contenu or nom, AMBRE if choisie else GRIS,
                   lambda: app.appui_bouton(bouton))
+
+
+def _largage_selectif(app):
+    n = sum(1 for s, _ in app.STATIONS_LARGAGE if app.a.allume(s + "_LT"))
+    return Touche("LARGAGE\nSÉLECTIF", f"{n} STA" if n else "CHOISIS", ROUGE if n else GRIS,
+                  app.largage_selectif, True)
 
 
 def _ddi(app):

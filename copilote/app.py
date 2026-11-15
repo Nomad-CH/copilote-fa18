@@ -8,7 +8,7 @@ import time
 from . import pages
 from . import touches
 from .boite_noire import DOSSIER as DOSSIER_BOITE, BoiteNoire
-from .avion import Avion
+from .avion import POS, Avion
 from .deck import COLS, RANGS, ROUGE, Touche, dessiner
 from .procedures import Executeur
 from .surveillance import Surveillance
@@ -96,25 +96,63 @@ class Copilote:
         threading.Thread(target=self._frein_parking, args=(serrer,), daemon=True).start()
 
     def _frein_parking(self, serrer):
-        """Poignee en deux temps : tirer puis tourner pour serrer ; tourner en
-        arriere puis repousser pour relacher. Verifie, et le note s'il echoue."""
-        b = self.b
-        if serrer:
-            b.envoyer("EMERGENCY_PARKING_BRAKE_PULL", 1)
-            time.sleep(0.4)
-            b.envoyer("EMERGENCY_PARKING_BRAKE_ROTATE", 2)
-        else:
-            b.envoyer("EMERGENCY_PARKING_BRAKE_ROTATE", 1)
-            time.sleep(0.4)
-            b.envoyer("EMERGENCY_PARKING_BRAKE_PULL", 0)
-        time.sleep(1.0)
-        if self.a.frein_parking == serrer:
+        from .procedures import manoeuvrer_frein
+        if manoeuvrer_frein(self.b, self.a, time.sleep, serrer, self.boite):
             self.dire("Frein de parking serré." if serrer else "Frein de parking relâché.")
         else:
             self.dire("Négatif. Frein de parking à ta charge.")
-            self.boite.ecrire("frein_parking_echec", serrer=serrer,
-                              pull=b.lire("EMERGENCY_PARKING_BRAKE_PULL"),
-                              rotate=b.lire("EMERGENCY_PARKING_BRAKE_ROTATE"))
+
+    STATIONS_LARGAGE = [("SJ_LO", "extérieure gauche"), ("SJ_LI", "intérieure gauche"),
+                        ("SJ_CTR", "centrale"), ("SJ_RI", "intérieure droite"),
+                        ("SJ_RO", "extérieure droite")]
+
+    def largage_selectif(self):
+        threading.Thread(target=self._largage_selectif, daemon=True).start()
+
+    def _largage_selectif(self):
+        """Tu choisis les stations, le copilote fait le reste : selecteur sur
+        STORES (ou RACK), master arm, bouton SEL JETT, puis tout remis en securite."""
+        b, a = self.b, self.a
+        choisies = [(s, nom) for s, nom in self.STATIONS_LARGAGE if a.allume(s + "_LT")]
+        if not choisies:
+            self.dire("Négatif. Aucune station sélectionnée.")
+            return
+        if a.au_sol:
+            self.dire("Négatif. Pas de largage au sol.")
+            return
+        mode = self.cfg.get("largage_mode", "STORES")
+        arme_avant = a.arme
+        try:
+            if not arme_avant:
+                b.envoyer("MASTER_ARM_SW", 1)
+            b.envoyer("SEL_JETT_KNOB", POS["SEL_JETT_KNOB"][mode])
+            time.sleep(0.6)
+            b.appuyer("SEL_JETT_BTN", 0.5)
+            time.sleep(1.0)
+        finally:
+            b.envoyer("SEL_JETT_KNOB", POS["SEL_JETT_KNOB"]["SAFE"])
+            time.sleep(0.3)
+            for s, _ in choisies:
+                if a.allume(s + "_LT"):
+                    b.appuyer(s, 0.2)
+                    time.sleep(0.2)
+            if not arme_avant:
+                b.envoyer("MASTER_ARM_SW", 0)
+        quoi = "Bidons et charges" if mode == "STORES" else "Pylônes"
+        noms = ", ".join(nom for _, nom in choisies)
+        self.dire(f"Largage effectué. Station {noms}." if len(choisies) == 1
+                  else f"Largage effectué. Stations {noms}.")
+        self.boite.ecrire("largage_selectif", mode=mode, stations=[s for s, _ in choisies],
+                          quoi=quoi)
+
+    def mode_largage(self):
+        self.cfg["largage_mode"] = "RACK" if self.cfg.get("largage_mode", "STORES") == "STORES" else "STORES"
+        try:
+            from .chemins import sauver_config
+            sauver_config(self.cfg)
+        except OSError:
+            pass
+        self.dire("Largage des pylônes." if self.cfg["largage_mode"] == "RACK" else "Largage des charges.")
 
     def radio(self, apres_menu=""):
         """Ouvre le menu radio de DCS puis enchaine des touches F (ex. "F5 F1 F1")."""
