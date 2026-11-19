@@ -61,6 +61,11 @@ button.leurre small { font-size: 12px; font-weight: normal; color: var(--pale); 
 #menace.calme { background: #3A2A0A; color: var(--ambre); animation: none; font-size: 18px; }
 @keyframes clignote { 50% { opacity: .55; } }
 
+#proc-bande { display: flex; align-items: center; gap: 10px; padding: 4px 10px; background: #10261A;
+  border-bottom: 1px solid var(--ligne); font-size: 14px; color: var(--pale); }
+#proc-bande span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#proc-bande button { min-height: 38px; padding: 0 14px; font-weight: bold; }
+
 /* corps */
 main { flex: 1; display: flex; min-height: 0; }
 #carte { flex: 1.5; min-width: 0; background: #0d1410; }

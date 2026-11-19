@@ -1,10 +1,7 @@
-**Version 0.17.1** — JDAM (fusée, sous-menu), leurres, coordonnées
+**Version 0.18.0** — revue du programme
 
-- JDAM : la fusée est maintenant vraiment mise sur INST (avant, le copilote appuyait sur OFF et laissait le sous-menu EFUZ ouvert, ce qui cachait l'option MSN). Il n'appuie plus jamais sur un type de bombe déjà encadré.
-- JDAM : stations de types différents (J-82 et J-83) traitées chacune à leur tour.
-- JDAM : « Coordonnées… » dans la liste d'une station pour taper la cible directement dans la bombe, sans créer de waypoint.
-- Coordonnées : affichées comme dans l'avion (N31°43'08" E064°48'27"). Saisie : tu ne tapes que les chiffres, N/S et E/W sont des boutons.
-- Leurres : DISPENSER sur BYPASS et laissé sur BYPASS ; passage en A/G automatique si besoin.
-- Défense AUTO : une seule annonce par tir (le voyant qui clignote ne la relance plus), et si rien ne part après deux essais, le copilote le dit une fois au lieu d'insister.
-- « Master caution » : au plus une fois toutes les 30 secondes.
-- Pilote auto : GARDE LE CAP ACTUEL, CAP VERS UN POINT, ou cap tapé.
+- Tablette : la procédure en cours s'affiche sur tous les onglets, avec son étape et un bouton STOP. La version du copilote est écrite en bas de l'onglet AVION.
+- Une action demandée pendant une procédure (cap, waypoint, JDAM…) attend son tour au lieu d'être refusée. A/P OFF passe toujours tout de suite.
+- Tablette : accès réservé aux appareils du réseau de la maison ; 5 codes faux ferment l'entrée une minute.
+- Journal : plus de lignes d'erreur quand la tablette coupe sa connexion.
+- Rappel 0.17.1 : fusée JDAM sur INST, J-82 et J-83 séparées, coordonnées comme dans l'avion, leurres sur BYPASS, une seule annonce par tir.

@@ -700,6 +700,13 @@ PROCEDURES = {
 
 
 # ------------------------------------------------------------------ moteur
+# procedures longues : elles ne se mettent pas en file d'attente
+LONGUES = ("demarrage_terre", "demarrage_pa", "arret", "decollage", "fence_in", "fence_out")
+
+
+IMMEDIATES = ("ap_off",)
+
+
 class Executeur:
     """Execute une procedure a la fois, dans son propre fil."""
 
@@ -715,6 +722,7 @@ class Executeur:
         self._abandon = threading.Event()
         self._verrou = threading.Lock()
         self._pause_totale = 0.0
+        self.file = []             # procedures demandees pendant qu'une autre tourne (2 au plus)
 
     def dire(self, texte, urgent=False):
         self._dire(texte, urgent)
@@ -743,11 +751,28 @@ class Executeur:
 
     def lancer(self, cle):
         with self._verrou:
-            if self.en_cours:
-                self.dire("Procédure déjà en cours.")
-                return False
             if not self.b.en_f18:
                 self.dire("Négatif. Pas de Hornet en ligne.")
+                return False
+            if self.en_cours and cle in IMMEDIATES:
+                # couper le pilote auto ne doit jamais attendre
+                def tout_de_suite():
+                    try:
+                        for e in PROCEDURES[cle][1]:
+                            e.run(self)
+                    except Exception as ex:
+                        self.dire(str(ex))
+                threading.Thread(target=tout_de_suite, daemon=True).start()
+                return True
+            if self.en_cours:
+                # une action courte demandee pendant une procedure : elle attend son tour
+                if cle == self.en_cours or cle in self.file:
+                    self.dire("Déjà demandé.")
+                elif len(self.file) >= 2 or cle in LONGUES:
+                    self.dire("Procédure déjà en cours.")
+                else:
+                    self.file.append(cle)
+                    self.dire(f"{PROCEDURES[cle][0]} : noté, après {self.titre.lower()}.")
                 return False
             self.en_cours = cle
         self.titre, etapes = PROCEDURES[cle]
@@ -757,6 +782,7 @@ class Executeur:
         return True
 
     def stop(self):
+        self.file.clear()
         if self.en_cours:
             self._abandon.set()
 
@@ -775,6 +801,8 @@ class Executeur:
         except Abandon as ex:
             # relache les commandes maintenues
             self.b.envoyer("CANOPY_SW", POS["CANOPY_SW"]["HOLD"])
+            self.b.envoyer("LEFT_DDI_HDG_SW", 1)
+            self.file.clear()
             self.dire(str(ex), urgent=True)
         except Exception as ex:  # ne jamais tuer le copilote
             if getattr(self, "boite", None) is not None:
@@ -783,6 +811,9 @@ class Executeur:
         finally:
             self.etape = ""
             self.en_cours = None
+            suivante = self.file.pop(0) if self.file else None
+        if suivante is not None and self.b.en_f18:
+            self.lancer(suivante)
 
 
 # Etape 2 : navigation (waypoints, carnet de points, TACAN, pilote automatique)

@@ -147,6 +147,7 @@ class Bios:
             finally:
                 self.connecte = False
                 self.derniere_trame = 0.0
+                self.mem[:] = bytes(len(self.mem))      # plus de liaison : on oublie l'ancien avion
                 with self._verrou:
                     if self._sock is not None:
                         try:

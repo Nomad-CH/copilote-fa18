@@ -176,3 +176,32 @@ class Jdam(unittest.TestCase):
         self.assertEqual(too["station"], 2)
         self.assertAlmostEqual(too["tgt_lat"], 31.509063, places=4)
         self.assertAlmostEqual(too["tgt_lon"], 65.654772, places=4)
+
+    def test_pages_du_19_novembre(self):
+        """Pages du vol du 19 nov. : sous-menu EFUZ, type encadre, types par station."""
+        from copilote.armement import lire_ddi
+        with open(os.path.join(RACINE, "tests", "pages_jdam_19nov.json"), encoding="utf-8") as f:
+            pages = json.load(f)
+
+        class X:
+            vivant = True
+
+            def __init__(self, t):
+                self.ecrans = {2: t}
+        lu = {k: lire_ddi(X(v)) for k, v in pages.items()}
+        self.assertTrue(lu["stores_efuz"]["efuz_menu"])
+        self.assertFalse(lu["stores_pp"]["efuz_menu"])
+        self.assertEqual(lu["stores_pp"]["types_haut"], ["J-82", "J-83"])
+        self.assertEqual(lu["stores_pp"]["type_encadre"], "J-82")
+        self.assertEqual(lu["stores_pp"]["stations_types"], {8: "J-82", 2: "J-82", 7: "J-83", 3: "J-83"})
+        self.assertEqual(lu["stores_too"]["mode"], "TOO")
+        self.assertTrue(lu["dsply_msn"]["msn_option"])
+        self.assertFalse(lu["dsply_sans"]["msn_option"])
+        self.assertAlmostEqual(lu["msn_pp_rempli"]["tgt_lat"], 31.718889, places=4)
+        self.assertAlmostEqual(lu["msn_pp_rempli"]["tgt_lon"], 64.8075, places=4)
+
+    def test_coordonnees_comme_dans_l_avion(self):
+        from copilote.navigation import Point, dms
+        self.assertEqual(dms(31.718889, True), "N31°43'08\"")
+        self.assertEqual(dms(64.8075, False), "E064°48'27\"")
+        self.assertEqual(Point("x", -1.5, -0.5).texte(), "S01°30'00\"  W000°30'00\"")

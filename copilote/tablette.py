@@ -11,6 +11,7 @@ JDAM par station, TACAN, etat de l'avion, menaces, defense, leurres, procedures,
 journal des annonces. Toute l'intelligence reste dans le copilote.
 """
 
+import ipaddress
 import json
 import mimetypes
 import os
@@ -61,6 +62,7 @@ class Tablette:
         self.clients = {}            # jeton -> derniere visite
         self._sols = {}              # numero de waypoint -> demande d'altitude en cours
         self._verrou = threading.Lock()
+        self._faux, self._bloque_jusqua = 0, 0.0     # essais de code rates
 
     # ------------------------------------------------------------ demarrage
     def demarrer(self):
@@ -77,8 +79,12 @@ class Tablette:
 
             def do_POST(self):
                 app._post(self)
+
+        class Serveur(ThreadingHTTPServer):
+            def handle_error(self, request, client_address):
+                pass        # une tablette qui coupe la connexion n'est pas une erreur a journaliser
         try:
-            self.serveur = ThreadingHTTPServer(("0.0.0.0", self.port), Gestion)
+            self.serveur = Serveur(("0.0.0.0", self.port), Gestion)
         except OSError as ex:
             self.erreur = f"Port {self.port} occupé ({ex})."
             return False
@@ -124,7 +130,19 @@ class Tablette:
             return True
         return False
 
+    def _reseau_local(self, h):
+        """Seuls les appareils du reseau de la maison (ou ce PC) sont servis."""
+        try:
+            ip = ipaddress.ip_address(h.client_address[0])
+        except ValueError:
+            return False
+        if getattr(ip, "ipv4_mapped", None):
+            ip = ip.ipv4_mapped
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+
     def _get(self, h):
+        if not self._reseau_local(h):
+            return self._repondre(h, 403, "", "text/plain")
         chemin = urlparse(h.path).path
         if chemin == "/api/etat":
             if not self._jeton_ok(h):
@@ -152,6 +170,8 @@ class Tablette:
         self._repondre(h, 200, corps, type_)
 
     def _post(self, h):
+        if not self._reseau_local(h):
+            return self._repondre(h, 403, "", "text/plain")
         chemin = urlparse(h.path).path
         try:
             n = int(h.headers.get("Content-Length", "0"))
@@ -159,9 +179,19 @@ class Tablette:
         except (ValueError, OSError):
             return self._repondre(h, 400, {"erreur": "requête"})
         if chemin == "/api/entrer":
-            if str(donnees.get("code", "")).strip() != code_acces(self.cfg):
-                time.sleep(1.0)                     # freine les essais au hasard
+            # 5 codes faux : entree fermee une minute pour tout le monde (essais au hasard)
+            with self._verrou:
+                if time.time() < self._bloque_jusqua:
+                    return self._repondre(h, 429, {"erreur": "Trop d'essais. Attends une minute."})
+            if not secrets.compare_digest(str(donnees.get("code", "")).strip(), code_acces(self.cfg)):
+                with self._verrou:
+                    self._faux += 1
+                    if self._faux >= 5:
+                        self._faux, self._bloque_jusqua = 0, time.time() + 60
+                time.sleep(1.0)
                 return self._repondre(h, 403, {"erreur": "Code faux."})
+            with self._verrou:
+                self._faux = 0
             jeton = secrets.token_hex(16)
             jetons = (self.cfg.get("tablette_jetons") or [])[-4:] + [jeton]
             self.cfg["tablette_jetons"] = jetons
@@ -223,6 +253,9 @@ class Tablette:
             "defense": self.cfg.get("defense", "CONSEIL"),
             "leurres": list(x.leurres) if (vivant and x.leurres) else None,
             "procedure": PROCEDURES[en_cours][0] if en_cours in PROCEDURES else None,
+            "etape": app.ex.etape or "",
+            "avancement": list(app.ex.avancement) if en_cours else None,
+            "en_attente": [PROCEDURES[k][0] for k in list(app.ex.file) if k in PROCEDURES],
             "procedures": [[k, v[0]] for k, v in PROCEDURES.items()],
             "wpt": ({"num": hsi["wypt"], "cap": hsi["cap"], "dist": hsi["dist"],
                      "tgt": "T\nG\nT" in (hsi.get("texte") or "")} if hsi else None),

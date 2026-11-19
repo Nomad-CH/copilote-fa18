@@ -193,6 +193,7 @@ $("#b-frein").onclick = () => agir("frein", { serrer: !(etat && etat.avion && et
 $("#b-ravito").onclick = () => agir("ravito");
 $("#b-marquer").onclick = () => agir("marquer");
 $("#b-stop").onclick = () => agir("stop");
+$("#b-stop-bande").onclick = () => agir("stop");
 $$("[data-proc]").forEach((b) => b.onclick = () => agir("procedure", { cle: b.dataset.proc }));
 $("#b-tacan").onclick = () => agir("tacan", tacanChoisi === null ? {} : { i: tacanChoisi });
 $("#b-tacan-ap").onclick = () => agir("tacan_ap", tacanChoisi === null ? {} : { i: tacanChoisi });
@@ -295,6 +296,15 @@ function rendre() {
   else if (e.menaces.length) { m.hidden = false; m.className = "calme"; m.textContent = "RWR : " + e.menaces.map((x) => x.nom).join(", "); }
   else m.hidden = true;
 
+  // procedure en cours : visible sur tous les onglets, avec STOP
+  const pb = $("#proc-bande");
+  pb.hidden = !e.procedure;
+  if (e.procedure) {
+    const av = e.avancement ? ` ${e.avancement[0]}/${e.avancement[1]}` : "";
+    const att = e.en_attente && e.en_attente.length ? ` · ensuite : ${e.en_attente.join(", ")}` : "";
+    $("#proc-texte").textContent = `${e.procedure}${av}${e.etape ? " — " + e.etape : ""}${att}`;
+  }
+  $("#version").textContent = e.version ? "Copilote version " + e.version : "";
   $("#b-envoyer").textContent = e.a_envoyer ? `ENVOYER À L'AVION (${e.a_envoyer})` : "ENVOYER À L'AVION";
   rendrePlan(); rendreJdam(); rendreTacan(); rendreAvion(); rendreJournal();
   dessinerCarte();
