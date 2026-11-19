@@ -804,8 +804,11 @@ def _pilote(libelle, message):
                 if essai == 0:
                     r.attendre(1.0)
                     continue
+                if libelle == "CPL":
+                    raise Echec("Option CPL absente du pilote automatique. "
+                                "Il faut un guidage (WYPT ou TCN) encadré sur la HSI.")
                 raise Echec(f"Option {libelle} absente du pilote automatique. "
-                            "Il faut un guidage (WYPT ou TCN) encadré sur la HSI.")
+                            "Coupe le pilote auto (A/P OFF), puis redemande.")
             r.attendre(1.0)
             if option_choisie(r.b, libelle):
                 break
@@ -854,13 +857,15 @@ def cap_vers(r, lat, lon):
 
 
 def regler_hsel(r, cible):
-    """Amene le repere de cap (HSEL, lu sur la HSI) sur le cap voulu avec l'interrupteur HDG."""
+    """Amene le repere de cap (HSEL, lu sur la HSI) sur le cap voulu. Un appui sur
+    l'interrupteur HDG ne deplace le repere que d'un cran (vu en vol le 19 nov.) :
+    on envoie donc des rafales d'appuis tres courts, puis on relit."""
     info = lire_hsi(r.export)
     if info is None or info.get("hsel") is None:
         raise Echec("Affiche la HSI : j'ai besoin de lire le cap sélecté.")
     sens = {1: 2, -1: 0}                                # ecart positif -> interrupteur vers la droite
-    fin = r.horloge() + 45
-    pire = 0
+    fin = r.horloge() + 40
+    immobile = 0
     while r.horloge() < fin:
         info = lire_hsi(r.export)
         if info is None or info.get("hsel") is None:
@@ -868,22 +873,25 @@ def regler_hsel(r, cible):
         e = _ecart(cible, info["hsel"])
         if abs(e) <= 1:
             return info["hsel"]
-        duree = 1.0 if abs(e) > 40 else 0.45 if abs(e) > 12 else 0.12 if abs(e) > 3 else 0.05
-        r.b.envoyer("LEFT_DDI_HDG_SW", sens[1 if e > 0 else -1])
-        r.attendre(duree)
-        r.b.envoyer("LEFT_DDI_HDG_SW", 1)
-        r.attendre(0.35)
+        coups = max(1, min(30, int(abs(e) * 0.8)))      # un peu moins que l'ecart : pas de depassement
+        for _ in range(coups):
+            r.b.envoyer("LEFT_DDI_HDG_SW", sens[1 if e > 0 else -1])
+            time.sleep(0.035)
+            r.b.envoyer("LEFT_DDI_HDG_SW", 1)
+            time.sleep(0.035)
+        r.attendre(0.3)
         apres = lire_hsi(r.export)
         if apres is not None and apres.get("hsel") is not None:
             bouge = _ecart(apres["hsel"], info["hsel"])
             if abs(bouge) < 1:
-                pire += 1
-                if pire >= 6:                           # le repere ne bouge pas du tout
+                immobile += 1
+                if immobile >= 5:                       # le repere ne bouge pas du tout
                     break
             else:
-                pire = 0
+                immobile = 0
                 if (bouge > 0) != (e > 0):              # l'interrupteur tourne dans l'autre sens
                     sens = {1: sens[-1], -1: sens[1]}
+    r.b.envoyer("LEFT_DDI_HDG_SW", 1)
     if getattr(r, "boite", None) is not None:
         r.boite.ecrire("hsel_non_regle", cible=cible, hsel=(lire_hsi(r.export) or {}).get("hsel"))
     raise Echec("Je n'arrive pas à régler le cap sélecté. Règle-le avec l'interrupteur HDG.")
@@ -896,10 +904,21 @@ def pilote_cap_actuel(r):
 
 def pilote_cap(r):
     """Pilote auto sur un cap : r.nav.cap_demande = None (cap actuel), un nombre,
-    ou ("wpt", numero). Regle le repere de cap puis engage HSEL."""
+    ou ("wpt", numero). Vers un waypoint, on fait comme dans l'avion : waypoint
+    affiche sur la HSI, WYPT encadre, puis A/P CPL."""
     if r.a.au_sol:
         raise Echec("Négatif. Pilote automatique en vol uniquement.")
     demande = getattr(r.nav, "cap_demande", None)
+    if isinstance(demande, (tuple, list)):
+        numero = int(demande[1])
+        p = r.nav.par_numero(numero)
+        if p is not None and not p.sync:
+            envoyer_plan(r)
+        _aller_numero(r, numero, False)
+        _guidage_wpt(r)
+        r.attendre(0.5)
+        _pilote("CPL", f"Pilote auto couplé sur le waypoint {numero}.")(r)
+        return
     if demande is None:
         cap = cap_magnetique(r)
         if cap is None:
@@ -908,12 +927,6 @@ def pilote_cap(r):
                 raise Echec("Cap de l'avion inconnu.")
             cap = round(math.degrees(pos["cap"])) % 360
         quoi = "cap actuel"
-    elif isinstance(demande, (tuple, list)):
-        p = r.nav.par_numero(int(demande[1]))
-        if p is None:
-            raise Echec(f"Waypoint {demande[1]} absent du plan.")
-        cap = cap_vers(r, p.lat, p.lon)
-        quoi = f"vers {p.nom or 'le waypoint ' + str(p.num)}"
     else:
         cap = int(demande) % 360
         quoi = "demandé"

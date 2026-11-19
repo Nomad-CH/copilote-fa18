@@ -295,8 +295,8 @@ class Surveillance:
             self._tir = {"debut": maintenant, "paquets": 0, "dernier": 0.0,
                          "stock": tuple(stock) if stock else None}
         t = self._tir
-        if not tir or t.get("bloque"):
-            return
+        if t.get("bloque"):
+            return                                  # la salve continue entre deux eclats du voyant
         if t["paquets"] >= 6 and maintenant - t["dernier"] > 12:
             t["paquets"] = 0                        # le tir dure : nouvelle salve
         if self.ex.cfg.get("defense", "CONSEIL") != "AUTO" or self.larguer is None:
@@ -309,13 +309,18 @@ class Surveillance:
                 t["reserve_dite"] = True
                 self._dire("Réserve de paillettes atteinte. Largage à ta main.", True)
             return
-        if t["paquets"] >= 2 and stock and t.get("stock") == tuple(stock):
+        if t["paquets"] >= 3 and stock and t.get("stock") == tuple(stock):
             t["bloque"] = True                      # deux essais, rien n'est parti : on n'insiste pas
             self._dire("Largage automatique impossible. Leurres à ta main.", True)
             return
         t["paquets"] += 1
         t["dernier"] = maintenant
-        self.larguer("chaff")
+        if t["paquets"] == 1:
+            self._dire("Paillettes automatiques.", True)
+        try:
+            self.larguer("chaff", True)
+        except TypeError:
+            self.larguer("chaff")
         if self.boite is not None:
             self.boite.ecrire("defense_auto", voyants=voyants, menaces=dict(vues),
                               paquet=t["paquets"], leurres=stock)

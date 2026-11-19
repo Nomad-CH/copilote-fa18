@@ -69,18 +69,23 @@ class Copilote:
         print(time.strftime("[%H:%M:%S] ") + texte, flush=True)
         self.voix.dire(texte, urgent)
 
-    def larguer(self, sorte):
-        """sorte = 'chaff' (paillettes) ou 'flare' (leurre IR)."""
-        threading.Thread(target=self._larguer, args=(sorte,), daemon=True).start()
+    def larguer(self, sorte, auto=False):
+        """sorte = 'chaff' (paillettes) ou 'flare' (leurre IR). auto : salve de la
+        defense automatique, sans annonce a chaque paillette."""
+        threading.Thread(target=self._larguer, args=(sorte, auto), daemon=True).start()
 
-    def _larguer(self, sorte):
+    _silence_leurres = False
+
+    def _larguer(self, sorte, auto=False):
         """Leurres. Constate en vol le 19 nov. : sur ON rien ne part (l'ALE-47 reste
         en veille), sur BYPASS (position 2) un appui = un leurre. Dans DCS il faut
         aussi un mode A/A ou A/G : le copilote passe en A/G tout seul si besoin.
         La position qui marche est retenue."""
-        if not self._verrou_leurres.acquire(blocking=False):
+        # la defense automatique attend son tour ; un appui manuel en double est ignore
+        if not self._verrou_leurres.acquire(blocking=auto, timeout=3 if auto else -1):
             return
         try:
+            self._silence_leurres = auto
             b, a, x = self.b, self.a, self.export
             voulue = int(self.cfg.get("leurres_position", 2))
             essais = []
@@ -129,6 +134,17 @@ class Copilote:
     def _mode_combat(self):
         return bool(self.a.allume("MASTER_MODE_AA_LT") or self.a.allume("MASTER_MODE_AG_LT"))
 
+    def _attendre_largage(self, avant, delai=1.0):
+        """Attend que le compteur de leurres baisse (rend la main des que c'est vu)."""
+        x = self.export
+        fin = time.time() + delai
+        while time.time() < fin:
+            apres = x.leurres or avant
+            if apres != avant:
+                return apres
+            time.sleep(0.1)
+        return x.leurres or avant
+
     def _appui_leurres(self, sorte, avant):
         """Un appui sur l'interrupteur de la manette. -> True/False, None si invérifiable."""
         b, x = self.b, self.export
@@ -137,18 +153,18 @@ class Copilote:
         b.envoyer("THROTTLE_DISP_SW", 1)
         if avant is None:
             return None
-        time.sleep(1.2)
-        apres = x.leurres or avant
+        apres = self._attendre_largage(avant)
         if apres == avant and x.ordres_possibles:
             cmd, val = (3032, 1) if sorte == "chaff" else (3033, -1)
             x.clic(13, cmd, val)
             time.sleep(0.3)
             x.clic(13, cmd, 0)
-            time.sleep(1.2)
-            apres = x.leurres or avant
+            apres = self._attendre_largage(avant)
         paillettes, ir = avant[0] - apres[0], avant[1] - apres[1]
         if paillettes <= 0 and ir <= 0:
             return False
+        if self._silence_leurres:
+            return True
         if paillettes > 0 and ir > 0:
             self.dire("Paillettes et leurres.")
         elif paillettes > 0:

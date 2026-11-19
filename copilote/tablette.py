@@ -435,5 +435,6 @@ class Tablette:
             return proc("jdam_programmer")
         if quoi == "jdam_too":
             nav.cible = int(d["num"]) if d.get("num") not in (None, "") else None
+            nav.too_stations = [int(x) for x in (d.get("stations") or [])] or None
             return proc("jdam_too")
         return {"ok": False, "message": "Action inconnue."}

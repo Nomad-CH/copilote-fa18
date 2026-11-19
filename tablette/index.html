@@ -85,10 +85,12 @@
         <div class="aide">Pour chaque station : un waypoint du plan, ou « Coordonnées » pour les taper directement dans la bombe (mode PP).</div>
         <div id="jdam-stations"></div>
         <div class="rangee"><button id="b-jdam-prog" class="principal">PROGRAMMER LES JDAM</button></div>
-        <div class="separateur">ou, en TOO (cible désignée)</div>
+        <div class="separateur">ou, en TOO : le waypoint devient la cible</div>
+        <div class="aide">Touche les stations à passer en TOO (aucune = toutes).</div>
+        <div id="too-stations" class="puces"></div>
         <div class="rangee">
           <select id="jdam-too-wpt"></select>
-          <button id="b-jdam-too">JDAM SUR CE WAYPOINT</button>
+          <button id="b-jdam-too">TOO SUR CE WAYPOINT</button>
         </div>
       </div>
 
@@ -125,10 +127,10 @@
           <button data-proc="ap_cpl">SUIT NAV</button>
           <button data-proc="ap_off" class="rouge">A/P OFF</button>
         </div>
-        <div class="aide">Prendre un cap : vers un point du plan (base, cible…) ou un cap tapé.</div>
+        <div class="aide">Aller vers un waypoint du plan (WYPT puis CPL, comme dans l'avion), ou prendre un cap tapé.</div>
         <div class="rangee">
           <select id="ap-wpt"></select>
-          <button id="b-ap-wpt">CAP VERS CE POINT</button>
+          <button id="b-ap-wpt">A/P VERS CE WAYPOINT</button>
         </div>
         <div class="rangee">
           <input id="ap-deg" placeholder="Cap 0-359" inputmode="numeric" maxlength="3">

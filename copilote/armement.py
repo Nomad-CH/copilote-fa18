@@ -200,10 +200,27 @@ def _mode(r, voulu):
     return bouton_ddi(r, "jdam_mode", (5,), lambda a, b: b["mode"] == voulu)
 
 
+def _ouvrir_efuz(r):
+    """Ouvre le sous-menu de la fusee. EFUZ est sur PB3 dans ton avion (PB4 essaye ensuite)."""
+    if _ddi(r)["efuz_menu"]:
+        return True
+    connus = r.cfg.setdefault("boutons_ddi", {})
+    connu = connus.get("efuz")
+    for pb in ([connu] if connu in (3, 4) else []) + [x for x in (3, 4) if x != connu]:
+        _appuyer(r, f"{_pb(DDI_G)}{pb:02d}")
+        fin = r.horloge() + 2
+        while r.horloge() < fin:
+            if _ddi(r)["efuz_menu"]:
+                connus["efuz"] = pb
+                return True
+            r.attendre(0.25)
+    return False
+
+
 def _fusee_inst(r):
-    """EFUZ sur INST. Le sous-menu (INST / DLY1 / OFF) doit etre referme : tant qu'il
-    reste ouvert, la page JDAM DSPLY ne propose pas MSN (constate le 19 nov.).
-    Le bouton d'INST est cherche puis retenu ; on n'essaie jamais 3 (OFF)."""
+    """EFUZ sur INST, avant toute programmation. Le sous-menu (INST / DLY1 / OFF) doit
+    etre referme : tant qu'il reste ouvert, la page JDAM DSPLY ne propose pas MSN.
+    Le bouton d'INST est cherche (1, puis 3, puis 5) et retenu."""
     from .chemins import sauver_config
     d = _ddi(r)
     if d["fusee"].upper().startswith("INST") and not d["efuz_menu"]:
@@ -211,27 +228,22 @@ def _fusee_inst(r):
     connus = r.cfg.setdefault("boutons_ddi", {})
     connu = connus.get("efuz_inst")
     essais = []
-    for pb in ([connu] if connu in (5, 1, 2) else []) + [x for x in (5, 1, 2) if x != connu]:
-        d = _ddi(r)
-        if not d["efuz_menu"]:
-            _appuyer(r, f"{_pb(DDI_G)}04")              # EFUZ
-            fin = r.horloge() + 2
-            while r.horloge() < fin and not _ddi(r)["efuz_menu"]:
-                r.attendre(0.25)
-            if not _ddi(r)["efuz_menu"]:
-                essais.append({"bouton": 4, "menu": False})
-                break
+    for pb in ([connu] if connu in (1, 2, 3, 4, 5) else []) + [x for x in (1, 3, 5, 2, 4) if x != connu]:
+        if not _ouvrir_efuz(r):
+            essais.append({"menu": False})
+            break
         _appuyer(r, f"{_pb(DDI_G)}{pb:02d}")
         r.attendre(0.9)
         d = _ddi(r)
         essais.append({"bouton": pb, "fusee": d["fusee"], "menu": d["efuz_menu"]})
         if d["fusee"].upper().startswith("INST") and not d["efuz_menu"]:
-            if connus.get("efuz_inst") != pb:
-                connus["efuz_inst"] = pb
-                try:
-                    sauver_config(r.cfg)
-                except OSError:
-                    pass
+            connus["efuz_inst"] = pb
+            try:
+                sauver_config(r.cfg)
+            except OSError:
+                pass
+            if getattr(r, "boite", None) is not None:
+                r.boite.ecrire("fusee_reglee", essais=essais, efuz=connus.get("efuz"))
             return True
     d = _ddi(r)
     if getattr(r, "boite", None) is not None:
@@ -300,6 +312,9 @@ def jdam_too(r):
     _designer_waypoint(r)
     # chaque station JDAM en TOO (le mode est propre a chaque station), type par type
     a_bord = list(stations_jdam(r.export))
+    voulues = getattr(r.nav, "too_stations", None)
+    if voulues:                                         # seulement les stations demandees
+        a_bord = [st for st in a_bord if st in voulues] or list(voulues)
     _mode_air_sol(r)
     groupes = _groupes(r, a_bord) if a_bord else [(None, [])]
     if not groupes:
@@ -328,7 +343,9 @@ def jdam_too(r):
     d = d or _ddi(r)
     d = _ddi(r) if _ddi(r)["jdam"] else d
     info = lire_hsi(r.export)
-    texte = f"JDAM prête, mode TOO sur le waypoint {numero}. Fusée {d['fusee'] or 'à vérifier'}."
+    quoi = ("station" + ("s " if len(stations) > 1 else " ") + ", ".join(str(x) for x in stations if x)
+            if voulues and stations else "JDAM")
+    texte = f"{quoi[0].upper() + quoi[1:]} en TOO sur le waypoint {numero}. Fusée {d['fusee'] or 'à vérifier'}."
     if info and info["cap"] is not None and info["dist"] is not None:
         texte += f" Cible au {info['cap']:03d}, {info['dist']:.0f} nautiques."
     texte += " Master arm et largage à toi."

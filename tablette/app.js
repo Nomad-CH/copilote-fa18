@@ -216,7 +216,8 @@ $("#b-jdam-prog").onclick = () => {
 $("#b-ap-cap").onclick = () => agir("ap_cap", { vers: "actuel" });
 $("#b-ap-wpt").onclick = () => agir("ap_cap", { vers: "wpt", num: $("#ap-wpt").value });
 $("#b-ap-deg").onclick = () => agir("ap_cap", { vers: "cap", cap: $("#ap-deg").value });
-$("#b-jdam-too").onclick = () => agir("jdam_too", { num: $("#jdam-too-wpt").value });
+const tooStations = new Set();
+$("#b-jdam-too").onclick = () => agir("jdam_too", { num: $("#jdam-too-wpt").value, stations: Array.from(tooStations) });
 
 // ---------------------------------------------- saisie de coordonnees
 // Comme sur les ecrans du Hornet : N 31°43'08"  E 064°48'27". On ne tape que des
@@ -362,6 +363,15 @@ function rendreJdam() {
       div.appendChild(ligne);
     });
     if (!stations.length) div.insertAdjacentHTML("beforeend", '<div class="aide">Pas de JDAM vues à bord (stations par défaut).</div>');
+    const puces = $("#too-stations");
+    puces.innerHTML = "";
+    liste.forEach((st) => {
+      const b = document.createElement("button");
+      b.textContent = "STA " + st;
+      b.className = tooStations.has(st) ? "actif" : "";
+      b.onclick = () => { tooStations.has(st) ? tooStations.delete(st) : tooStations.add(st); b.classList.toggle("actif"); };
+      puces.appendChild(b);
+    });
     const too = $("#jdam-too-wpt"), v = too.value;
     too.innerHTML = optionsWpt(v || choisi || "");
     const ap = $("#ap-wpt"), va = ap.value;

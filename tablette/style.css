@@ -165,3 +165,6 @@ details.saisie .rangee { margin-top: 8px; }
   #menace { font-size: 16px; padding: 5px 10px; }
 }
 .station { margin-bottom: 8px; }
+.puces { display: flex; gap: 8px; flex-wrap: wrap; }
+.puces button { flex: 1; min-width: 64px; }
+.puces button.actif { background: var(--ambre); color: var(--encre); border-color: var(--ambre); font-weight: bold; }

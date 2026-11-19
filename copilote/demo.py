@@ -426,10 +426,10 @@ class FausseNav:
             self.ddi, self.jdam_depuis = "stores", None
         elif p == "jdam" and pb == 5:
             self.jdam_mode = "TOO" if self.jdam_mode == "PP" else "PP"
-        elif p == "jdam" and pb == 4:
+        elif p == "jdam" and pb == 3:               # EFUZ est sur PB3 dans l'avion
             self.ddi = "efuz"
-        elif p == "efuz" and pb in (3, 4, 5):       # comme dans l'avion : OFF, DLY1, INST
-            self.fusee, self.ddi = {3: "OFF", 4: "DLY1", 5: "INST"}[pb], "jdam"
+        elif p == "efuz" and pb in (3, 4, 5):       # hypothese : INST, DLY1, OFF
+            self.fusee, self.ddi = {5: "OFF", 4: "DLY1", 3: "INST"}[pb], "jdam"
         elif p in ("jdam", "efuz") and pb == 11:
             self.dsply_bloque = p == "efuz"         # sous-menu EFUZ ouvert : pas d'option MSN
             self.ddi = "dsply"

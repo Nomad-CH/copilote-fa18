@@ -17,8 +17,10 @@ POS = {
     "WING_FOLD_ROTATE": {"FOLD": 0, "HOLD": 1, "SPREAD": 2},
     "INS_SW": {"OFF": 0, "CV": 1, "GND": 2, "NAV": 3, "IFA": 4},
     "RADAR_SW": {"OFF": 0, "STBY": 1, "OPR": 2},
-    "CMSD_DISPENSE_SW": {"BYPASS": 0, "ON": 1, "OFF": 2},   # rotacteur : ordre direct
-    "ECM_MODE_SW": {"XMIT": 0, "REC": 1, "BIT": 2, "STBY": 3, "OFF": 4},   # rotacteur : ordre direct
+    # Verifie en vol le 19 nov. : quand la touche affichait BYPASS, l'avion etait sur OFF.
+    # L'ordre reel est donc OFF, ON, BYPASS (et, meme construction, OFF ... XMIT).
+    "CMSD_DISPENSE_SW": {"OFF": 0, "ON": 1, "BYPASS": 2},
+    "ECM_MODE_SW": {"OFF": 0, "STBY": 1, "BIT": 2, "REC": 3, "XMIT": 4},
     "LEFT_DDI_BRT_SELECT": {"OFF": 0, "NIGHT": 1, "DAY": 2},
     "RIGHT_DDI_BRT_SELECT": {"OFF": 0, "NIGHT": 1, "DAY": 2},
     "IR_COOL_SW": {"OFF": 0, "NORM": 1, "ORIDE": 2},
