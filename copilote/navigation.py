@@ -60,7 +60,16 @@ class Point:
                 "source": self.source, "num": self.num, "sync": self.sync, "cree": self.cree}
 
     def texte(self):
-        return f"{ddm(self.lat, True)}  {ddm(self.lon, False)}"
+        """Comme sur les ecrans du Hornet : N31°43'08" E064°48'27"."""
+        return f"{dms(self.lat, True)}  {dms(self.lon, False)}"
+
+
+def dms(valeur, est_lat):
+    h = ("N" if valeur >= 0 else "S") if est_lat else ("E" if valeur >= 0 else "W")
+    total = round(abs(valeur) * 3600)
+    d, reste = divmod(total, 3600)
+    m, sec = divmod(reste, 60)
+    return f"{h}{d:02d}°{m:02d}'{sec:02d}\"" if est_lat else f"{h}{d:03d}°{m:02d}'{sec:02d}\""
 
 
 def ddm(valeur, est_lat):

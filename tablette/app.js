@@ -183,10 +183,11 @@ $("#b-flare").onclick = () => agir("leurre", { sorte: "flare" });
 $("#b-ici").onclick = () => agir("point_ici");
 $("#b-nouveau").onclick = () => { if (confirm("Vider le plan du copilote ? (pas les waypoints de l'avion)")) agir("plan_nouveau"); };
 $("#b-ajouter-coord").onclick = () => {
-  const c = lireCoord($("#s-coord").value);
-  if (!c) { toast("Coordonnées non comprises."); return; }
+  const c = lireCoord($("#s-coord"));
+  if (!c) { toast("Coordonnées incomplètes : degrés, minutes, secondes."); return; }
   agir("point_ajouter", { lat: c[0], lon: c[1], nom: $("#s-nom").value, num: $("#s-num").value });
-  ["#s-coord", "#s-nom", "#s-num"].forEach((s) => ($(s).value = ""));
+  ["#s-nom", "#s-num"].forEach((s) => ($(s).value = ""));
+  monterCoord($("#s-coord"));
 };
 $("#b-frein").onclick = () => agir("frein", { serrer: !(etat && etat.avion && etat.avion.frein) });
 $("#b-ravito").onclick = () => agir("ravito");
@@ -201,7 +202,14 @@ $("#b-tacan-ajouter").onclick = () => {
 };
 $("#b-jdam-prog").onclick = () => {
   const plan = {};
-  $$("#jdam-stations select").forEach((s) => { if (s.value !== "") plan[s.dataset.st] = s.value; });
+  let faux = null;
+  $$("#jdam-stations select").forEach((s) => {
+    if (s.value === "") return;
+    if (s.value !== "coord") { plan[s.dataset.st] = s.value; return; }
+    const c = lireCoord(s.parentElement.querySelector(".coord"));
+    if (!c) faux = s.dataset.st; else plan[s.dataset.st] = { lat: c[0], lon: c[1] };
+  });
+  if (faux) { toast(`Station ${faux} : coordonnées incomplètes.`); return; }
   agir("jdam_programmer", { plan });
 };
 $("#b-ap-cap").onclick = () => agir("ap_cap", { vers: "actuel" });
@@ -209,23 +217,60 @@ $("#b-ap-wpt").onclick = () => agir("ap_cap", { vers: "wpt", num: $("#ap-wpt").v
 $("#b-ap-deg").onclick = () => agir("ap_cap", { vers: "cap", cap: $("#ap-deg").value });
 $("#b-jdam-too").onclick = () => agir("jdam_too", { num: $("#jdam-too-wpt").value });
 
-// coordonnees tapees : N41 55.200 E041 51.500  /  N 41°55'12" E 41°51'30"  /  41.92, 41.86
-function lireCoord(t) {
-  t = t.toUpperCase().replace(/,/g, " ").trim();
-  const une = (s, hem) => {
-    let signe = 1;
-    const m = s.match(new RegExp(`^([${hem}])`));
-    if (m) { if ("SW".includes(m[1])) signe = -1; s = s.slice(1); }
-    const n = (s.match(/\d+(\.\d+)?/g) || []).map(Number);
-    if (!n.length || n.length > 3) return null;
-    return signe * (n[0] + (n[1] || 0) / 60 + (n[2] || 0) / 3600);
-  };
-  let m = t.match(/^([NS].*?)\s+([EWO].*)$/);
-  if (m) { const a = une(m[1], "NS"), b = une(m[2].replace("O", "W"), "EW"); return a === null || b === null ? null : [a, b]; }
-  m = t.split(/\s+/);
-  if (m.length === 2) return [Number(m[0]), Number(m[1])].some(isNaN) ? null : [Number(m[0]), Number(m[1])];
-  return null;
+// ---------------------------------------------- saisie de coordonnees
+// Comme sur les ecrans du Hornet : N 31°43'08"  E 064°48'27". On ne tape que des
+// chiffres ; N/S et E/W se choisissent par bouton, et on passe seul a la case suivante.
+function hemiDefaut() {
+  const p = etat && etat.position;
+  return [p && p.lat < 0 ? "S" : "N", p && p.lon < 0 ? "W" : "E"];
 }
+function monterCoord(el, valeurs) {
+  const v = valeurs || {};
+  const [hLat, hLon] = hemiDefaut();
+  const ligne = (axe, hems, hem, deg) => `<div class="ligne" data-axe="${axe}">
+      <div class="hemi">${hems.map((h) => `<button type="button" data-h="${h}" class="${h === hem ? "actif" : ""}">${h}</button>`).join("")}</div>
+      <input data-c="d" inputmode="numeric" maxlength="${deg}" placeholder="${deg === 2 ? "31" : "064"}" value="${v[axe + "d"] || ""}"><span class="u">°</span>
+      <input data-c="m" inputmode="numeric" maxlength="2" placeholder="00" value="${v[axe + "m"] || ""}"><span class="u">'</span>
+      <input data-c="s" inputmode="numeric" maxlength="2" placeholder="00" value="${v[axe + "s"] || ""}"><span class="u">"</span>
+    </div>`;
+  el.innerHTML = ligne("lat", ["N", "S"], v.lath || hLat, 2) + ligne("lon", ["E", "W"], v.lonh || hLon, 3);
+  const champs = Array.from(el.querySelectorAll("input"));
+  champs.forEach((c, i) => {
+    c.oninput = () => {
+      c.value = c.value.replace(/\D/g, "");
+      if (c.value.length >= c.maxLength && champs[i + 1]) champs[i + 1].focus();
+      if (el.onchange) el.onchange();
+    };
+  });
+  el.querySelectorAll(".hemi button").forEach((b) => {
+    b.onclick = () => {
+      b.parentElement.querySelectorAll("button").forEach((x) => x.classList.toggle("actif", x === b));
+      if (el.onchange) el.onchange();
+    };
+  });
+}
+function valeursCoord(el) {
+  const out = {};
+  el.querySelectorAll(".ligne").forEach((l) => {
+    const axe = l.dataset.axe;
+    out[axe + "h"] = l.querySelector(".hemi .actif").dataset.h;
+    l.querySelectorAll("input").forEach((c) => (out[axe + c.dataset.c] = c.value));
+  });
+  return out;
+}
+function lireCoord(el) {
+  const v = valeursCoord(el);
+  const une = (axe, max) => {
+    if (v[axe + "d"] === "") return null;
+    const d = Number(v[axe + "d"]), m = Number(v[axe + "m"] || 0), sec = Number(v[axe + "s"] || 0);
+    if (d > max || m > 59 || sec > 59) return null;
+    return ("SW".includes(v[axe + "h"]) ? -1 : 1) * (d + m / 60 + sec / 3600);
+  };
+  const lat = une("lat", 90), lon = une("lon", 180);
+  return lat === null || lon === null ? null : [lat, lon];
+}
+monterCoord($("#s-coord"));
+const jdamCoord = {};          // station -> ce qui est tape dans ses cases
 
 // ------------------------------------------------------------------ rendu
 function rendre() {
@@ -298,7 +343,12 @@ function rendreJdam() {
       const nom = (j.stations[st] || "JDAM").replace("(V)1/B", "").replace("(V)2/B", "");
       const val = avant[st] ?? j.choix[st] ?? "";
       ligne.innerHTML = `<span class="lib">STA ${st}<br><small>${esc(nom)}</small></span>
-        <select data-st="${st}">${optionsWpt(val)}</select>`;
+        <select data-st="${st}">${optionsWpt(val)}<option value="coord" ${val === "coord" ? "selected" : ""}>Coordonnées…</option></select>
+        <div class="coord" ${val === "coord" ? "" : "hidden"}></div>`;
+      const zone = ligne.querySelector(".coord"), sel = ligne.querySelector("select");
+      monterCoord(zone, jdamCoord[st]);
+      zone.onchange = () => (jdamCoord[st] = valeursCoord(zone));
+      sel.onchange = () => (zone.hidden = sel.value !== "coord");
       div.appendChild(ligne);
     });
     if (!stations.length) div.insertAdjacentHTML("beforeend", '<div class="aide">Pas de JDAM vues à bord (stations par défaut).</div>');

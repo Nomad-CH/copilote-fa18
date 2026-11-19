@@ -116,6 +116,19 @@ details.saisie .rangee { margin-top: 8px; }
 .carte-boutons { position: absolute; z-index: 1000; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .carte-boutons button { min-height: 44px; font-size: 13px; background: rgba(17,24,19,.9); }
 
+/* saisie de coordonnees : chiffres seulement, N/S et E/W par boutons */
+.coord { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; min-width: 0; max-width: 100%; }
+.coord .ligne { display: flex; align-items: center; gap: 4px; }
+.coord .hemi { display: flex; flex: 0 0 auto; }
+.coord .hemi button { min-width: 44px; min-height: 48px; padding: 0; border-radius: 0; font-weight: bold; }
+.coord .hemi button:first-child { border-radius: 6px 0 0 6px; }
+.coord .hemi button:last-child { border-radius: 0 6px 6px 0; }
+.coord .hemi button.actif { background: var(--vert); color: var(--encre); }
+.coord input { flex: 1 1 0; min-width: 0; width: 0; text-align: center; font-size: 20px; padding: 0 2px; }
+.coord .u { color: var(--pale); font-size: 18px; flex: 0 0 auto; }
+.station { flex-wrap: wrap; }
+.station .coord { flex: 0 0 100%; min-width: 0; }
+
 /* telephone tenu debout : bandeau sur 2 lignes, petite carte, le panneau defile dessous */
 @media (max-width: 820px) and (orientation: portrait) {
   main { flex-direction: column; }
@@ -146,3 +159,4 @@ details.saisie .rangee { margin-top: 8px; }
   #onglets button { font-size: 12px; padding: 0 2px; min-height: 40px; }
   #menace { font-size: 16px; padding: 5px 10px; }
 }
+.station { margin-bottom: 8px; }

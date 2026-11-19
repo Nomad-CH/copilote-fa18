@@ -18,11 +18,11 @@ Rien n'est largue par le copilote : la detente reste a toi.
 import re
 
 from .exportdcs import elements
-from .navigation import (Echec, _aller_numero, _appuyer, _guidage_wpt, _hsi, bouton_appris,
+from .navigation import (Echec, Point, _aller_numero, _appuyer, _guidage_wpt, _hsi, bouton_appris,
                          entrer, lire_hsi, option_ufc, options_ufc, taper)
 
 DDI_G = 2
-JDAM_TYPES = ("J-82", "J-83", "J-84")
+JDAM_TYPES = ("J-82", "J-83", "J-84", "J-109")
 
 
 # ----------------------------------------------------------------- lecture
@@ -50,12 +50,33 @@ def lire_ddi(export, ecran=DDI_G):
         if v.replace("\n", "") in JDAM_TYPES and "__id" in n:
             jdam_type = v.replace("\n", "")
             break
+    # rangee du haut (PB6 a PB10) : les types d'armes, celui qui est choisi est suivi d'un cadre
+    types_haut, type_encadre, dernier = [], None, None
+    stations_types = {}
+    for n, v in el:
+        propre = v.replace("\n", "")
+        m = re.match(r"STA(\d)_Label_TYPE", n)
+        if m:
+            if propre in JDAM_TYPES:
+                stations_types[int(m.group(1))] = propre
+            continue
+        if "_box" in n:
+            if dernier is not None and type_encadre is None:
+                type_encadre = dernier
+            dernier = None
+        elif "__id" in n and propre in JDAM_TYPES:
+            types_haut.append(propre)
+            dernier = propre
+        elif propre:
+            dernier = None
     return {
         "ecran": ecran, "texte": txt, "elements": el,
         "menu_tac": present("STORES") and present("RDR"),
         "stores": "Master_Arm_Status" in txt,
         "jdam": "ALGN_QUAL" in txt and "Master_Arm_Status" in txt,
         "jdam_type": jdam_type,
+        "types_haut": types_haut, "type_encadre": type_encadre, "stations_types": stations_types,
+        "efuz_menu": present("INST") and (present("DLY1") or present("OFF")) and not present("EFUZ"),
         "mode": "TOO" if present("TOO") else ("PP" if present("PP") else None),
         "fusee": (val("JDAM_EFUZ_Val") or "").strip(),
         "alignement": (val("ALGN_QUAL_Val") or "").strip(),
@@ -144,40 +165,109 @@ def _page_stores(r):
     return bouton_ddi(r, "stores", (5,), lambda a, b: b["stores"])
 
 
-def _choisir_jdam(r):
+def _choisir_jdam(r, voulu=None):
+    """Page STORES, avec le type de JDAM voulu choisi (encadre). On n'appuie JAMAIS sur
+    un type deja encadre : cela le desactiverait (constate le 19 nov.)."""
     d = _page_stores(r)
-    if d["jdam"]:
-        return d
-    if d["jdam_type"] is None and not any(t in d["texte"] for t in JDAM_TYPES):
+    types = d["types_haut"]
+    if not types:
         raise Echec("Pas de JDAM à bord.")
-    return bouton_ddi(r, "jdam_type", (6, 7, 8, 9, 10), lambda a, b: b["jdam"])
+    voulu = voulu or d["type_encadre"] or types[0]
+    if voulu not in types:
+        raise Echec(f"Pas de {voulu} à bord.")
+    if d["type_encadre"] == voulu:
+        return d
+    pb = 6 + types.index(voulu)
+    for _ in range(2):
+        _appuyer(r, f"{_pb(DDI_G)}{pb:02d}")
+        fin = r.horloge() + 2.5
+        while r.horloge() < fin:
+            d = _ddi(r)
+            if d["type_encadre"] == voulu:
+                return d
+            r.attendre(0.25)
+        if _ddi(r)["type_encadre"] not in (None, voulu):
+            break
+    if getattr(r, "boite", None) is not None:
+        r.boite.ecrire("jdam_type_non_choisi", voulu=voulu, bouton=pb, texte=_ddi(r)["texte"][:20000])
+    raise Echec(f"Je n'arrive pas à choisir {voulu} sur la page STORES.")
 
 
 def _mode(r, voulu):
     d = _ddi(r)
-    if d["mode"] == voulu:
+    if d["mode"] == voulu or d["mode"] is None:
         return d
     return bouton_ddi(r, "jdam_mode", (5,), lambda a, b: b["mode"] == voulu)
 
 
 def _fusee_inst(r):
+    """EFUZ sur INST. Le sous-menu (INST / DLY1 / OFF) doit etre referme : tant qu'il
+    reste ouvert, la page JDAM DSPLY ne propose pas MSN (constate le 19 nov.).
+    Le bouton d'INST est cherche puis retenu ; on n'essaie jamais 3 (OFF)."""
+    from .chemins import sauver_config
     d = _ddi(r)
-    if d["fusee"].upper().startswith("INST"):
-        return
-    try:
-        bouton_ddi(r, "jdam_efuz", (4,), lambda a, b: a["texte"] != b["texte"])
-        bouton_ddi(r, "jdam_efuz_inst", (3,), lambda a, b: b["fusee"].upper().startswith("INST")
-                   or "INST" in b["texte"] and a["texte"] != b["texte"])
-    except Echec:
-        r.non_confirmes.append("fusée INST")
+    if d["fusee"].upper().startswith("INST") and not d["efuz_menu"]:
+        return True
+    connus = r.cfg.setdefault("boutons_ddi", {})
+    connu = connus.get("efuz_inst")
+    essais = []
+    for pb in ([connu] if connu in (5, 1, 2) else []) + [x for x in (5, 1, 2) if x != connu]:
+        d = _ddi(r)
+        if not d["efuz_menu"]:
+            _appuyer(r, f"{_pb(DDI_G)}04")              # EFUZ
+            fin = r.horloge() + 2
+            while r.horloge() < fin and not _ddi(r)["efuz_menu"]:
+                r.attendre(0.25)
+            if not _ddi(r)["efuz_menu"]:
+                essais.append({"bouton": 4, "menu": False})
+                break
+        _appuyer(r, f"{_pb(DDI_G)}{pb:02d}")
+        r.attendre(0.9)
+        d = _ddi(r)
+        essais.append({"bouton": pb, "fusee": d["fusee"], "menu": d["efuz_menu"]})
+        if d["fusee"].upper().startswith("INST") and not d["efuz_menu"]:
+            if connus.get("efuz_inst") != pb:
+                connus["efuz_inst"] = pb
+                try:
+                    sauver_config(r.cfg)
+                except OSError:
+                    pass
+            return True
+    d = _ddi(r)
+    if getattr(r, "boite", None) is not None:
+        r.boite.ecrire("fusee_non_reglee", essais=essais, fusee=d["fusee"], texte=d["texte"][:20000])
+    r.non_confirmes.append("fusée INST (elle est sur " + (d["fusee"] or "?") + ")"
+                           + (", sous-menu EFUZ resté ouvert" if d["efuz_menu"] else ""))
+    return False
 
 
-def _preparer(r, mode):
+def _preparer(r, mode, type_jdam=None):
     _mode_air_sol(r)
-    d = _choisir_jdam(r)
-    _mode(r, mode)
+    _choisir_jdam(r, type_jdam)
     _fusee_inst(r)
-    return _ddi(r) or d
+    return _mode(r, mode)
+
+
+def _groupes(r, stations):
+    """Stations regroupees par type de bombe (J-82, J-83...) : STEP ne passe que
+    d'une station a l'autre du meme type. -> [(type ou None, [stations])]"""
+    d = _page_stores(r)
+    types = d["stations_types"]
+    ordre = sorted(stations, key=lambda s: ORDRE_LARGAGE.index(s) if s in ORDRE_LARGAGE else 9)
+    if not types:
+        return [(None, ordre)]
+    groupes = []
+    for st in ordre:
+        t = types.get(st)
+        if t is None:
+            continue
+        for g in groupes:
+            if g[0] == t:
+                g[1].append(st)
+                break
+        else:
+            groupes.append((t, [st]))
+    return groupes
 
 
 # -------------------------------------------------------------------- TOO
@@ -208,22 +298,34 @@ def jdam_too(r):
     _guidage_wpt(r)
     numero = _hsi(r)["wypt"]
     _designer_waypoint(r)
-    d = _preparer(r, "TOO")
-    # chaque station JDAM en TOO (le mode est propre a chaque station)
-    stations = sorted(stations_jdam(r.export), key=lambda s: ORDRE_LARGAGE.index(s)
-                      if s in ORDRE_LARGAGE else 9)
-    relu = None
-    try:
-        _page_msn(r)
-        for st in stations or [None]:
-            if st is not None:
-                _station_msn(r, st)
-            m = _mode_station(r, "TOO")
-            relu = relu or (m["tgt_lat"], m["tgt_lon"])
-        _station_msn(r, stations[0]) if stations else None
-        bouton_ddi(r, "msn_retour", (19,), lambda a, b: not b["msn_page"])
-    except Echec as ex:
-        r.non_confirmes.append("TOO sur chaque station (" + str(ex) + ")")
+    # chaque station JDAM en TOO (le mode est propre a chaque station), type par type
+    a_bord = list(stations_jdam(r.export))
+    _mode_air_sol(r)
+    groupes = _groupes(r, a_bord) if a_bord else [(None, [])]
+    if not groupes:
+        groupes = [(None, [])]
+    stations, relu, d = [], None, None
+    for type_jdam, liste in groupes:
+        try:
+            d = _preparer(r, "TOO", type_jdam)
+            _page_msn(r)
+            for st in liste or [None]:
+                if st is not None:
+                    _station_msn(r, st)
+                m = _mode_station(r, "TOO")
+                relu = relu or (m["tgt_lat"], m["tgt_lon"])
+                stations.append(st)
+            if liste:
+                _station_msn(r, liste[0])
+            bouton_ddi(r, "msn_retour", (19,), lambda a, b: not b["msn_page"])
+        except Echec as ex:
+            r.non_confirmes.append(f"TOO {type_jdam or 'JDAM'} ({ex})")
+    if len(groupes) > 1:
+        try:
+            _choisir_jdam(r, groupes[0][0])
+        except Echec:
+            pass
+    d = d or _ddi(r)
     d = _ddi(r) if _ddi(r)["jdam"] else d
     info = lire_hsi(r.export)
     texte = f"JDAM prête, mode TOO sur le waypoint {numero}. Fusée {d['fusee'] or 'à vérifier'}."
@@ -277,6 +379,8 @@ def _page_msn(r):
         if not d["dsply"]:
             if not d["stores"]:
                 _page_stores(r)
+            if _ddi(r)["efuz_menu"]:                    # sous-menu ouvert : il cache l'option MSN
+                _fusee_inst(r)
             bouton_ddi(r, "jdam_dsply", (11,), lambda a, b: b["dsply"] or b["msn_page"])
             d = _ddi(r)
         if d["msn_option"]:
@@ -285,11 +389,11 @@ def _page_msn(r):
             except Echec:
                 pass
         if not annonce:
-            r.dire("Bombe en mise en route. J'attends l'option mission, une minute environ.")
+            r.dire("Option mission pas encore affichée. Je rouvre la page et j'attends.")
             annonce = True
         r.attendre(5)
         tour += 1
-        if tour % 3 == 0 and not _ddi(r)["msn_option"]:
+        if tour % 3 == 1 and not _ddi(r)["msn_option"]:
             try:                                        # rouvre la page : MENU, STORES, DSPLY
                 bouton_ddi(r, "menu", (18,), lambda a, b: not b["dsply"], delai=1.5)
             except Echec:
@@ -394,32 +498,71 @@ def _entrer_cible(r, p):
     return ok
 
 
+def _point_cible(r, cible):
+    """Cible d'une station : un numero de waypoint du plan, ou des coordonnees directes."""
+    if isinstance(cible, Point):
+        return cible
+    return r.nav.par_numero(int(cible))
+
+
+def _altitude_sol(r, p):
+    """Coordonnees directes : demande a DCS l'altitude du sol sous la cible."""
+    x = r.export
+    if p.alt_m is not None or x is None or not getattr(x, "ordres_possibles", False):
+        return
+    try:
+        n = x.demander_sol(p.lat, p.lon)
+    except OSError:
+        return
+    fin = r.horloge() + 2.5
+    while r.horloge() < fin:
+        if n in x.sols:
+            p.alt_m = x.sols[n]
+            return
+        r.attendre(0.2)
+
+
 def jdam_programmer(r):
-    """Programme chaque station JDAM sur son waypoint (fenetre : station -> waypoint)."""
+    """Programme chaque station JDAM en PP : sur un waypoint du plan, ou sur des
+    coordonnees donnees directement (r.nav.jdam = {station: numero ou Point})."""
     plan = dict(getattr(r.nav, "jdam", {}) or {})
-    if not plan:
-        raise Echec("Choisis un waypoint pour au moins une station.")
     a_bord = stations_jdam(r.export)
-    plan = {st: n for st, n in plan.items() if n is not None and (not a_bord or st in a_bord)}
+    plan = {st: c for st, c in plan.items() if c is not None and (not a_bord or st in a_bord)}
     if not plan:
-        raise Echec("Aucune de ces stations n'a de JDAM.")
-    for st, num in plan.items():
-        p = r.nav.par_numero(num)
-        if p is None:
-            raise Echec(f"Waypoint {num} absent du plan.")
-    _preparer(r, "PP")
-    _page_msn(r)
+        raise Echec("Choisis une cible pour au moins une station qui porte une JDAM.")
+    for st, c in plan.items():
+        if _point_cible(r, c) is None:
+            raise Echec(f"Waypoint {c} absent du plan.")
+    _mode_air_sol(r)
     faits, rates = [], []
-    for st in sorted(plan, key=lambda s: ORDRE_LARGAGE.index(s) if s in ORDRE_LARGAGE else 9):
-        p = r.nav.par_numero(plan[st])
-        _station_msn(r, st)
-        (faits if _entrer_cible(r, p) else rates).append(st)
-    bouton_ddi(r, "msn_retour", (19,), lambda a, b: not b["msn_page"])
+    groupes = _groupes(r, list(plan))
+    if not groupes:
+        raise Echec("Aucune de ces stations n'a de JDAM.")
+    for type_jdam, liste in groupes:
+        try:
+            _preparer(r, "PP", type_jdam)
+            _page_msn(r)
+            for st in liste:
+                _station_msn(r, st)
+                p = _point_cible(r, plan[st])
+                _altitude_sol(r, p)
+                (faits if _entrer_cible(r, p) else rates).append(st)
+            bouton_ddi(r, "msn_retour", (19,), lambda a, b: not b["msn_page"])
+        except Echec as ex:
+            rates.extend(st for st in liste if st not in faits and st not in rates)
+            r.non_confirmes.append(f"{type_jdam or 'JDAM'} : {ex}")
+    if len(groupes) > 1:
+        try:
+            _choisir_jdam(r, groupes[0][0])
+        except Echec:
+            pass
     if rates:
         r.non_confirmes.append("stations " + ", ".join(map(str, rates)))
-    textes = [f"station {st} sur {r.nav.par_numero(plan[st]).nom}" for st in faits]
-    r.dire("JDAM programmées : " + ", ".join(textes) + ". Largage dans l'ordre 8, 2, 7, 3. "
-           "Master arm et largage à toi." if textes else "Programmation JDAM non confirmée.")
+    textes = [f"station {st} sur {_point_cible(r, plan[st]).nom}" for st in faits]
+    if textes:
+        r.dire("JDAM programmées : " + ", ".join(textes) + ". Master arm et largage à toi.")
+    else:
+        r.dire("Programmation JDAM non confirmée.")
 
 
 def _proc(fonction, quoi):

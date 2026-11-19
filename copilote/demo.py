@@ -409,9 +409,9 @@ class FausseNav:
                 self.saisie += ident[4:]
 
     def _msn_pret(self):
-        """Comme dans l'avion : l'option MSN n'apparait qu'apres la mise en route de la bombe."""
+        """Comme dans l'avion : pas d'option MSN tant que le sous-menu EFUZ est ouvert."""
         depuis = getattr(self, "jdam_depuis", None)
-        return depuis is not None and time.time() - depuis > 12
+        return depuis is not None and time.time() - depuis > 3 and not getattr(self, "dsply_bloque", False)
 
     def _ddi(self, pb):
         p = self.ddi
@@ -422,13 +422,16 @@ class FausseNav:
         elif p == "stores" and pb == 6:
             self.ddi = "jdam"
             self.jdam_depuis = time.time()
+        elif p == "jdam" and pb == 6:               # appuyer sur le type deja choisi le desactive
+            self.ddi, self.jdam_depuis = "stores", None
         elif p == "jdam" and pb == 5:
             self.jdam_mode = "TOO" if self.jdam_mode == "PP" else "PP"
         elif p == "jdam" and pb == 4:
             self.ddi = "efuz"
-        elif p == "efuz" and pb == 3:
-            self.fusee, self.ddi = "INST", "jdam"
-        elif p == "jdam" and pb == 11:
+        elif p == "efuz" and pb in (3, 4, 5):       # comme dans l'avion : OFF, DLY1, INST
+            self.fusee, self.ddi = {3: "OFF", 4: "DLY1", 5: "INST"}[pb], "jdam"
+        elif p in ("jdam", "efuz") and pb == 11:
+            self.dsply_bloque = p == "efuz"         # sous-menu EFUZ ouvert : pas d'option MSN
             self.ddi = "dsply"
         elif p == "dsply" and pb == 4 and self._msn_pret():
             self.ddi = "msn"
@@ -457,7 +460,11 @@ class FausseNav:
             t = pg.get("2" if self.jdam_mode == "PP" else "3", {}).get("2", "")
             return t.replace("JDAM_EFUZ_Val\nOFF", "JDAM_EFUZ_Val\n" + self.fusee)
         if self.ddi == "efuz":
-            return "\x1fOFF_1__id:5\nOFF\n\x1fINST_1__id:3\nINST\n"
+            t = pg.get("2", {}).get("2", "")
+            for lib in ("ARM_1__id:49\nA\nR\nM", "EFUZ_1__id:55\nE\nF\nU\nZ", "MODE_1__id:57\nM\nO\nD\nE",
+                        "PP_2__id:58\nP\nP", "ERASE_1__id:50\nE\nR\nA\nS\nE"):
+                t = t.replace("\x1f" + lib + "\n", "")
+            return t + "\x1fINST_1__id:67\nINST\n\x1fDLY1_1__id:69\nDLY1\n\x1fOFF_1__id:71\nOFF\n"
         if self.ddi == "dsply":
             return self.pages_msn["dsply"] + ("\x1fMSN_1__id:8\nMSN\n" if self._msn_pret() else "")
         if self.ddi == "msn":

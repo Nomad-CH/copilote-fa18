@@ -103,6 +103,8 @@ class Copilote:
                         essais.append({"position": position, "ok": ok, "mode": True})
                 if ok is not False:
                     break
+            if ok is False and b.lire("CMSD_DISPENSE_SW") != voulue:
+                b.envoyer("CMSD_DISPENSE_SW", voulue)        # on ne laisse pas l'interrupteur ailleurs
             if ok and self.cfg.get("leurres_position") != essais[-1]["position"]:
                 self.cfg["leurres_position"] = essais[-1]["position"]
                 try:

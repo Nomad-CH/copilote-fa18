@@ -86,6 +86,9 @@ class Surveillance:
         self._etat = {}
         self._pannes_vues = set()
         self._mc = False
+        self._mc_dit = 0.0
+        self._vu_allume = {}
+        self._tir_vu = 0.0
         self._pret_depuis = None
         # menaces RWR : symbole -> {"niveau": ..., "vu": heure}
         self.menaces = {}
@@ -132,6 +135,12 @@ class Surveillance:
                 vrai = bool(cond(a))
             except Exception:
                 vrai = False
+            # un voyant qui clignote ne doit pas relancer l'annonce a chaque eclat :
+            # l'alerte reste active 8 s apres la derniere fois ou le voyant etait allume
+            if vrai:
+                self._vu_allume[cle] = time.time()
+            elif time.time() - self._vu_allume.get(cle, 0) < 8:
+                vrai = True
             if vrai:
                 actives.append(cle)
                 nommee_recente = time.time() - self._derniere_menace_nommee < 4
@@ -150,7 +159,8 @@ class Surveillance:
         if not calme:
             if nouvelles:
                 self._dire("Alarme. " + ", ".join(VOYANTS_PANNE[i] for i in sorted(nouvelles)) + ".", False)
-            elif mc and not self._mc:
+            elif mc and not self._mc and time.time() - self._mc_dit > 30:
+                self._mc_dit = time.time()
                 self._dire("Master caution.", False)
         self._mc = mc
         self.actives = actives + sorted(pannes)
@@ -272,12 +282,23 @@ class Surveillance:
                 self._capturer_rwr(sym, ep, maintenant, voyants["CW"])
             else:
                 info.pop("lock", None)
-        if not tir:
+        # le voyant de tir clignote : un tir dure jusqu'a 8 s apres son dernier eclat
+        if tir:
+            self._tir_vu = maintenant
+        elif maintenant - self._tir_vu > 8:
             self._tir = None
             return
         if self._tir is None:
-            self._tir = {"debut": maintenant, "paquets": 0, "dernier": 0.0}
+            if not tir:
+                return
+            stock = self.export.leurres
+            self._tir = {"debut": maintenant, "paquets": 0, "dernier": 0.0,
+                         "stock": tuple(stock) if stock else None}
         t = self._tir
+        if not tir or t.get("bloque"):
+            return
+        if t["paquets"] >= 6 and maintenant - t["dernier"] > 12:
+            t["paquets"] = 0                        # le tir dure : nouvelle salve
         if self.ex.cfg.get("defense", "CONSEIL") != "AUTO" or self.larguer is None:
             return
         if t["paquets"] >= 6 or maintenant - t["dernier"] < 1.5:
@@ -287,6 +308,10 @@ class Surveillance:
             if not t.get("reserve_dite"):
                 t["reserve_dite"] = True
                 self._dire("Réserve de paillettes atteinte. Largage à ta main.", True)
+            return
+        if t["paquets"] >= 2 and stock and t.get("stock") == tuple(stock):
+            t["bloque"] = True                      # deux essais, rien n'est parti : on n'insiste pas
+            self._dire("Largage automatique impossible. Leurres à ta main.", True)
             return
         t["paquets"] += 1
         t["dernier"] = maintenant

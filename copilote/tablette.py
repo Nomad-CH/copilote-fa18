@@ -232,7 +232,8 @@ class Tablette:
             "tacan_choisi": nav.tacan if t is not None else None,
             "jdam": {"stations": {str(k): v for k, v in stations_jdam(x).items()} if vivant else {},
                      "ordre": list(ORDRE_LARGAGE),
-                     "choix": {str(k): v for k, v in (getattr(nav, "jdam", {}) or {}).items()}},
+                     "choix": {str(k): (v if isinstance(v, int) else "coord")
+                               for k, v in (getattr(nav, "jdam", {}) or {}).items()}},
         }
 
     def _suivre_sols(self):
@@ -384,9 +385,19 @@ class Tablette:
 
         # --- JDAM
         if quoi == "jdam_programmer":
-            plan = {int(st): int(n) for st, n in (d.get("plan") or {}).items() if n not in (None, "")}
+            plan = {}
+            for st, n in (d.get("plan") or {}).items():
+                if n in (None, ""):
+                    continue
+                if isinstance(n, dict):                     # coordonnees tapees pour cette station
+                    lat, lon = float(n["lat"]), float(n["lon"])
+                    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                        return {"ok": False, "message": f"Station {st} : coordonnées hors limites."}
+                    plan[int(st)] = Point("coordonnées", lat, lon, None, "tablette")
+                else:
+                    plan[int(st)] = int(n)
             if not plan:
-                return {"ok": False, "message": "Choisis un waypoint pour au moins une station."}
+                return {"ok": False, "message": "Choisis une cible pour au moins une station."}
             nav.jdam = plan
             return proc("jdam_programmer")
         if quoi == "jdam_too":

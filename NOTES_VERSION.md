@@ -1,5 +1,10 @@
-**Version 0.17.0** — leurres, JDAM en PP, pilote auto sur un cap
+**Version 0.17.1** — JDAM (fusée, sous-menu), leurres, coordonnées
 
-- Leurres : le copilote met le DISPENSER sur BYPASS (c'est là que ça part, vu dans ton vol) et passe lui-même en mode A/G s'il n'y a ni A/A ni A/G. Il retient la position qui marche.
-- JDAM : il attend que l'option MSN s'affiche (jusqu'à 1 min 30 après la mise sous tension de la bombe) au lieu d'appuyer trop tôt, puis vérifie les coordonnées relues et recommence plus lentement si elles sont fausses.
-- Pilote auto : GARDE LE CAP ACTUEL (tablette et Stream Deck, page NAV), CAP VERS UN POINT du plan (base, cible…), ou un cap tapé. Le copilote règle le repère de cap puis engage HSEL. La HSI doit être affichée.
+- JDAM : la fusée est maintenant vraiment mise sur INST (avant, le copilote appuyait sur OFF et laissait le sous-menu EFUZ ouvert, ce qui cachait l'option MSN). Il n'appuie plus jamais sur un type de bombe déjà encadré.
+- JDAM : stations de types différents (J-82 et J-83) traitées chacune à leur tour.
+- JDAM : « Coordonnées… » dans la liste d'une station pour taper la cible directement dans la bombe, sans créer de waypoint.
+- Coordonnées : affichées comme dans l'avion (N31°43'08" E064°48'27"). Saisie : tu ne tapes que les chiffres, N/S et E/W sont des boutons.
+- Leurres : DISPENSER sur BYPASS et laissé sur BYPASS ; passage en A/G automatique si besoin.
+- Défense AUTO : une seule annonce par tir (le voyant qui clignote ne la relance plus), et si rien ne part après deux essais, le copilote le dit une fois au lieu d'insister.
+- « Master caution » : au plus une fois toutes les 30 secondes.
+- Pilote auto : GARDE LE CAP ACTUEL, CAP VERS UN POINT, ou cap tapé.

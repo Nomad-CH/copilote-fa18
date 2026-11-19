@@ -73,7 +73,7 @@
             <input id="s-num" placeholder="N°" inputmode="numeric" class="court">
             <input id="s-nom" placeholder="Nom" maxlength="12">
           </div>
-          <div class="rangee"><input id="s-coord" placeholder="N41 55.200 E041 51.500"></div>
+          <div id="s-coord" class="coord"></div>
           <div class="rangee"><button id="b-ajouter-coord">AJOUTER</button></div>
         </details>
         <div class="rangee"><button id="b-nouveau" class="discret">NOUVEAU PLAN</button></div>
@@ -81,7 +81,7 @@
 
       <!-- JDAM -->
       <div class="onglet" id="o-jdam" hidden>
-        <div class="aide">Une station → un waypoint du plan. Les bombes partent dans l'ordre 8, 2, 7, 3.</div>
+        <div class="aide">Pour chaque station : un waypoint du plan, ou « Coordonnées » pour les taper directement dans la bombe (mode PP).</div>
         <div id="jdam-stations"></div>
         <div class="rangee"><button id="b-jdam-prog" class="principal">PROGRAMMER LES JDAM</button></div>
         <div class="separateur">ou, en TOO (cible désignée)</div>
