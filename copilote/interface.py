@@ -1078,13 +1078,25 @@ class FenetreTablette:
                          "3. Tape le code, puis menu ⋮ > Ajouter à l'écran d'accueil.",
                  bg=FOND, fg=PALE, font=ui.p_petit, justify="left").pack(padx=20, pady=4)
         try:
+            # Dessine directement les carres du QR code : aucune image a fabriquer.
             import qrcode
-            from PIL import ImageTk
-            img = qrcode.make(adresse, box_size=7, border=2).convert("RGB")
-            self.photo = ImageTk.PhotoImage(img)
-            tk.Label(f, image=self.photo, bg=FOND).pack(pady=8)
-        except Exception:
-            pass
+            q = qrcode.QRCode(border=2, error_correction=qrcode.constants.ERROR_CORRECT_M)
+            q.add_data(adresse)
+            q.make(fit=True)
+            grille = q.get_matrix()
+            pas = 7
+            cote = len(grille) * pas
+            dessin = tk.Canvas(f, width=cote, height=cote, bg="white", highlightthickness=0)
+            for y, ligne in enumerate(grille):
+                for x, noir in enumerate(ligne):
+                    if noir:
+                        dessin.create_rectangle(x * pas, y * pas, (x + 1) * pas, (y + 1) * pas,
+                                                fill="black", width=0)
+            dessin.pack(pady=8)
+        except Exception as ex:
+            ui.app.boite.erreur("QR code tablette", ex)
+            tk.Label(f, text="QR code indisponible : tape l'adresse ci-dessous dans Chrome.",
+                     bg=FOND, fg=AMBRE, font=ui.p_petit).pack(pady=8)
         tk.Label(f, text=adresse, bg=FOND, fg=VERT, font=ui.p_titre).pack()
         tk.Label(f, text="CODE : " + " ".join(code_acces(ui.cfg)), bg=FOND, fg=AMBRE,
                  font=ui.p_titre).pack(pady=(6, 4))

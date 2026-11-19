@@ -60,7 +60,7 @@ jobs:
             --add-data "config_defaut.json;." `
             --add-data "icone.ico;." `
             --add-binary "hidapi.dll;." `
-            --collect-all edge_tts --collect-data certifi `
+            --collect-all edge_tts --collect-data certifi --collect-submodules qrcode `
             --hidden-import StreamDeck.Transport.LibUSBHIDAPI `
             lanceur.py
           Copy-Item hidapi.dll dist/CopiloteF18/
