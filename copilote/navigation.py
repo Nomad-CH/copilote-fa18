@@ -155,6 +155,7 @@ class Carnet:
         self.choisi = 0
         self.tacan = 0
         self.cible = None          # numero vers lequel aller (fenetre)
+        self.cap_demande = None    # pilote auto sur un cap : None = cap actuel, nombre, ("wpt", n)
         self.fin_mission = 0.0     # derniere heure ou la mission precedente tournait
         self.t_modele = None       # horloge de cette mission (DCS), pour reperer une nouvelle mission
         self._sauve_t = 0.0
@@ -316,6 +317,8 @@ def lire_hsi(export, ecrans=(4, 3, 2)):
         m = re.match(r"\s*(-?\d+)\s*FT", _valeur(el, "WYPT_Elev") or "")
         info["elev_ft"] = int(m.group(1)) if m else None
         info["route"] = [int(x) for x in re.findall(r"\d+", _valeur(el, "WYPT_SequenceData") or "")]
+        m = re.match(r"\s*(\d+)", _valeur(el, "HSELData") or "")
+        info["hsel"] = int(m.group(1)) % 360 if m else None
         trc = _valeur(el, "TRCData") or ""
         m = re.search(r"(\d+)\s*°\s*/\s*([\d.]+)", trc)
         if m:
@@ -809,6 +812,106 @@ def _pilote(libelle, message):
     return action
 
 
+def _ecart(a, b):
+    """Ecart d'angle a - b, ramene entre -180 et 180."""
+    return (a - b + 180) % 360 - 180
+
+
+def cap_magnetique(r):
+    """Cap magnetique de l'avion (celui de la HSI), ou None."""
+    try:
+        v = r.b.lire("HDG_DEG_MAG")
+        if v is not None:
+            return int(v) % 360
+    except Exception:
+        pass
+    return None
+
+
+def cap_vers(r, lat, lon):
+    """Cap magnetique a prendre pour aller vers ce point, depuis la position de l'avion."""
+    pos = getattr(r.export, "position", None) if r.export is not None else None
+    if not pos or pos.get("lat") is None:
+        raise Echec("Position de l'avion inconnue : liaison DCS absente.")
+    la1, la2 = math.radians(pos["lat"]), math.radians(lat)
+    dl = math.radians(lon - pos["lon"])
+    vrai = math.degrees(math.atan2(math.sin(dl) * math.cos(la2),
+                                   math.cos(la1) * math.sin(la2) - math.sin(la1) * math.cos(la2) * math.cos(dl))) % 360
+    mag = cap_magnetique(r)
+    if mag is not None and pos.get("cap") is not None:
+        vrai_avion = math.degrees(pos["cap"]) % 360
+        return round(mag + _ecart(vrai, vrai_avion)) % 360       # corrige la declinaison
+    return round(vrai) % 360
+
+
+def regler_hsel(r, cible):
+    """Amene le repere de cap (HSEL, lu sur la HSI) sur le cap voulu avec l'interrupteur HDG."""
+    info = lire_hsi(r.export)
+    if info is None or info.get("hsel") is None:
+        raise Echec("Affiche la HSI : j'ai besoin de lire le cap sélecté.")
+    sens = {1: 2, -1: 0}                                # ecart positif -> interrupteur vers la droite
+    fin = r.horloge() + 45
+    pire = 0
+    while r.horloge() < fin:
+        info = lire_hsi(r.export)
+        if info is None or info.get("hsel") is None:
+            raise Echec("HSI masquée pendant le réglage du cap.")
+        e = _ecart(cible, info["hsel"])
+        if abs(e) <= 1:
+            return info["hsel"]
+        duree = 1.0 if abs(e) > 40 else 0.45 if abs(e) > 12 else 0.12 if abs(e) > 3 else 0.05
+        r.b.envoyer("LEFT_DDI_HDG_SW", sens[1 if e > 0 else -1])
+        r.attendre(duree)
+        r.b.envoyer("LEFT_DDI_HDG_SW", 1)
+        r.attendre(0.35)
+        apres = lire_hsi(r.export)
+        if apres is not None and apres.get("hsel") is not None:
+            bouge = _ecart(apres["hsel"], info["hsel"])
+            if abs(bouge) < 1:
+                pire += 1
+                if pire >= 6:                           # le repere ne bouge pas du tout
+                    break
+            else:
+                pire = 0
+                if (bouge > 0) != (e > 0):              # l'interrupteur tourne dans l'autre sens
+                    sens = {1: sens[-1], -1: sens[1]}
+    if getattr(r, "boite", None) is not None:
+        r.boite.ecrire("hsel_non_regle", cible=cible, hsel=(lire_hsi(r.export) or {}).get("hsel"))
+    raise Echec("Je n'arrive pas à régler le cap sélecté. Règle-le avec l'interrupteur HDG.")
+
+
+def pilote_cap_actuel(r):
+    r.nav.cap_demande = None
+    pilote_cap(r)
+
+
+def pilote_cap(r):
+    """Pilote auto sur un cap : r.nav.cap_demande = None (cap actuel), un nombre,
+    ou ("wpt", numero). Regle le repere de cap puis engage HSEL."""
+    if r.a.au_sol:
+        raise Echec("Négatif. Pilote automatique en vol uniquement.")
+    demande = getattr(r.nav, "cap_demande", None)
+    if demande is None:
+        cap = cap_magnetique(r)
+        if cap is None:
+            pos = getattr(r.export, "position", None) if r.export is not None else None
+            if not pos or pos.get("cap") is None:
+                raise Echec("Cap de l'avion inconnu.")
+            cap = round(math.degrees(pos["cap"])) % 360
+        quoi = "cap actuel"
+    elif isinstance(demande, (tuple, list)):
+        p = r.nav.par_numero(int(demande[1]))
+        if p is None:
+            raise Echec(f"Waypoint {demande[1]} absent du plan.")
+        cap = cap_vers(r, p.lat, p.lon)
+        quoi = f"vers {p.nom or 'le waypoint ' + str(p.num)}"
+    else:
+        cap = int(demande) % 360
+        quoi = "demandé"
+    regler_hsel(r, cap)
+    _pilote("HSEL", f"Pilote auto, cap {cap:03d}, {quoi}.")(r)
+
+
 def pilote_off(r):
     _appuyer(r, "STICK_PADDLE_SW", 0.3)
     r.dire("Pilote automatique déconnecté.")
@@ -922,6 +1025,8 @@ PROCEDURES_NAV = {
     "tacan_ap": ("TACAN et pilote auto", _proc(_tacan_pilote, "TACAN et pilote auto")),
     "ap_balt": ("Pilote auto altitude", _proc(_pilote("BALT", "Pilote auto, maintien d'altitude."),
                                                "pilote auto BALT")),
+    "ap_cap_actuel": ("Pilote auto, garde le cap actuel", _proc(pilote_cap_actuel, "pilote auto cap actuel")),
+    "ap_cap": ("Pilote auto sur un cap", _proc(pilote_cap, "pilote auto cap")),
     "ap_hsel": ("Pilote auto cap", _proc(_pilote("HSEL", "Pilote auto, maintien du cap sélecté."),
                                           "pilote auto HSEL")),
     "ap_cpl": ("Pilote auto couplé", _proc(_pilote("CPL", "Pilote auto couplé sur la navigation."),

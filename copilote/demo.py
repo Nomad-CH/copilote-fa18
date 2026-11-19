@@ -408,14 +408,20 @@ class FausseNav:
             elif ident.startswith("UFC_") and ident[4:].isdigit():
                 self.saisie += ident[4:]
 
+    def _msn_pret(self):
+        """Comme dans l'avion : l'option MSN n'apparait qu'apres la mise en route de la bombe."""
+        depuis = getattr(self, "jdam_depuis", None)
+        return depuis is not None and time.time() - depuis > 12
+
     def _ddi(self, pb):
         p = self.ddi
         if pb == 18:
             self.ddi = "menu"
         elif p == "menu" and pb == 5:
-            self.ddi = "stores"
+            self.ddi = "jdam" if getattr(self, "jdam_depuis", None) else "stores"
         elif p == "stores" and pb == 6:
             self.ddi = "jdam"
+            self.jdam_depuis = time.time()
         elif p == "jdam" and pb == 5:
             self.jdam_mode = "TOO" if self.jdam_mode == "PP" else "PP"
         elif p == "jdam" and pb == 4:
@@ -424,7 +430,7 @@ class FausseNav:
             self.fusee, self.ddi = "INST", "jdam"
         elif p == "jdam" and pb == 11:
             self.ddi = "dsply"
-        elif p == "dsply" and pb == 4:
+        elif p == "dsply" and pb == 4 and self._msn_pret():
             self.ddi = "msn"
         elif p == "msn" and pb == 13:
             ordre = [8, 2, 7, 3]
@@ -453,7 +459,7 @@ class FausseNav:
         if self.ddi == "efuz":
             return "\x1fOFF_1__id:5\nOFF\n\x1fINST_1__id:3\nINST\n"
         if self.ddi == "dsply":
-            return self.pages_msn["dsply"]
+            return self.pages_msn["dsply"] + ("\x1fMSN_1__id:8\nMSN\n" if self._msn_pret() else "")
         if self.ddi == "msn":
             t = self.pages_msn["msn1"].replace("CurrStation_JDAM\n8", "CurrStation_JDAM\n%d" % self.sta)
             if self.modes[self.sta] == "TOO":

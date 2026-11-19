@@ -120,9 +120,18 @@
         <div class="separateur">Pilote automatique</div>
         <div class="grille">
           <button data-proc="ap_balt">GARDE ALT.</button>
-          <button data-proc="ap_hsel">GARDE CAP</button>
+          <button id="b-ap-cap">GARDE LE CAP ACTUEL</button>
           <button data-proc="ap_cpl">SUIT NAV</button>
           <button data-proc="ap_off" class="rouge">A/P OFF</button>
+        </div>
+        <div class="aide">Prendre un cap : vers un point du plan (base, cible…) ou un cap tapé.</div>
+        <div class="rangee">
+          <select id="ap-wpt"></select>
+          <button id="b-ap-wpt">CAP VERS CE POINT</button>
+        </div>
+        <div class="rangee">
+          <input id="ap-deg" placeholder="Cap 0-359" inputmode="numeric" maxlength="3">
+          <button id="b-ap-deg">PRENDRE CE CAP</button>
         </div>
         <div class="separateur">Divers</div>
         <div class="grille">

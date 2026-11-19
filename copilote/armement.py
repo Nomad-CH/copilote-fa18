@@ -19,7 +19,7 @@ import re
 
 from .exportdcs import elements
 from .navigation import (Echec, _aller_numero, _appuyer, _guidage_wpt, _hsi, bouton_appris,
-                         entrer, lire_hsi, option_ufc, taper)
+                         entrer, lire_hsi, option_ufc, options_ufc, taper)
 
 DDI_G = 2
 JDAM_TYPES = ("J-82", "J-83", "J-84")
@@ -261,27 +261,40 @@ def stations_jdam(export):
 
 
 def _page_msn(r):
-    """STORES -> JDAM DSPLY (PB11) -> MSN. L'option MSN n'apparait qu'une fois la
-    bombe sous tension depuis quelques secondes : on attend jusqu'a 45 s."""
+    """STORES -> JDAM DSPLY (PB11) -> MSN (PB4). L'option MSN n'apparait qu'une fois
+    la bombe sous tension depuis un moment (jusqu'a 1 min 30 constate le 19 nov.) :
+    on n'appuie que lorsqu'elle est affichee, et on rouvre la page pour la rafraichir."""
     d = _ddi(r)
     if d["msn_page"]:
         return d
-    if not d["dsply"]:
-        bouton_ddi(r, "jdam_dsply", (11,), lambda a, b: b["dsply"] or b["msn_page"])
-    fin = r.horloge() + 45
+    fin = r.horloge() + 150
     annonce = False
+    tour = 0
     while r.horloge() < fin:
         d = _ddi(r)
         if d["msn_page"]:
             return d
-        try:
-            return bouton_ddi(r, "jdam_msn", (4,), lambda a, b: b["msn_page"], delai=1.5)
-        except Echec:
-            if not annonce:
-                r.dire("Bombe en mise en route. J'attends la page mission.")
-                annonce = True
-            r.attendre(4)
-    raise Echec("Page MSN inaccessible. Ouvre-la à la main (JDAM DSPLY puis MSN), puis réessaie.")
+        if not d["dsply"]:
+            if not d["stores"]:
+                _page_stores(r)
+            bouton_ddi(r, "jdam_dsply", (11,), lambda a, b: b["dsply"] or b["msn_page"])
+            d = _ddi(r)
+        if d["msn_option"]:
+            try:
+                return bouton_ddi(r, "jdam_msn", (4,), lambda a, b: b["msn_page"], delai=2.0)
+            except Echec:
+                pass
+        if not annonce:
+            r.dire("Bombe en mise en route. J'attends l'option mission, une minute environ.")
+            annonce = True
+        r.attendre(5)
+        tour += 1
+        if tour % 3 == 0 and not _ddi(r)["msn_option"]:
+            try:                                        # rouvre la page : MENU, STORES, DSPLY
+                bouton_ddi(r, "menu", (18,), lambda a, b: not b["dsply"], delai=1.5)
+            except Echec:
+                pass
+    raise Echec("Option MSN absente après 2 min 30. Vérifie que la bombe est choisie (J-82 encadré).")
 
 
 def _station_msn(r, station):
@@ -302,38 +315,82 @@ def _mode_station(r, voulu):
     return bouton_ddi(r, "msn_mode", (5,), lambda a, b: b["mission"].startswith(voulu))
 
 
+def _etat_ufc(r):
+    b = r.b
+    return {"options": options_ufc(b),
+            "bloc": [str(b.lire(n)) for n in ("UFC_SCRATCHPAD_STRING_1_DISPLAY",
+                                              "UFC_SCRATCHPAD_STRING_2_DISPLAY",
+                                              "UFC_SCRATCHPAD_NUMBER_DISPLAY")]}
+
+
+def _saisir_coord(r, p, lent, trace):
+    """UFC TGT -> POSN -> LAT puis LON, en degres minutes secondes."""
+    pause = 0.9 if lent else 0.5
+    _appuyer(r, f"{_pb(DDI_G)}14")                     # UFC TGT
+    r.attendre(pause)
+    trace.append({"etape": "tgt_ufc", **_etat_ufc(r)})
+    if not option_ufc(r, "POSN"):
+        raise Echec("UFC TGT : option POSN absente.")
+    r.attendre(pause)
+    for valeur, est_lat, lib in ((p.lat, True, "LAT"), (p.lon, False, "LON")):
+        trouve = option_ufc(r, lib, attendu=False)
+        r.attendre(pause)
+        touche, tete, cent = _dms(valeur, est_lat)
+        if lent and not est_lat and len(tete) == 6:
+            tete = "0" + tete                           # 2e essai : longitude sur 3 chiffres
+        taper(r, touche)
+        if lent:
+            r.attendre(0.3)
+        taper(r, tete)
+        trace.append({"etape": lib + "_tape", "option": trouve, "saisie": touche + tete, **_etat_ufc(r)})
+        entrer(r)
+        r.attendre(pause)
+        taper(r, cent)
+        trace.append({"etape": lib + "_centiemes", "saisie": cent, **_etat_ufc(r)})
+        entrer(r)
+        r.attendre(pause)
+        d = _ddi(r)
+        trace.append({"etape": lib + "_relu", "lat": d["tgt_lat"], "lon": d["tgt_lon"]})
+    _appuyer(r, "UFC_CLR")
+    r.attendre(0.5)
+
+
+def _cible_ok(r, p):
+    d = _ddi(r)
+    return (d["tgt_lat"] is not None and d["tgt_lon"] is not None
+            and abs(d["tgt_lat"] - p.lat) < 0.0003 and abs(d["tgt_lon"] - p.lon) < 0.0003)
+
+
 def _entrer_cible(r, p):
     _mode_station(r, "PP")
     if "PP1" not in _ddi(r)["mission"]:
         bouton_ddi(r, "pp1", (6,), lambda a, b: "PP1" in b["mission"])
-    _appuyer(r, f"{_pb(DDI_G)}14")                     # UFC TGT
-    r.attendre(0.6)
-    if not option_ufc(r, "POSN"):
-        raise Echec("UFC TGT : option POSN absente.")
-    for valeur, est_lat, lib in ((p.lat, True, "LAT"), (p.lon, False, "LON")):
-        option_ufc(r, lib, attendu=False)
-        touche, tete, cent = _dms(valeur, est_lat)
-        taper(r, touche)
-        taper(r, tete)
-        entrer(r)
-        taper(r, cent)
-        entrer(r)
-    _appuyer(r, "UFC_CLR")
-    if p.alt_m is not None:
+    trace = []
+    ok = False
+    for lent in (False, True):                          # 2e essai plus lent si la relecture est fausse
+        _saisir_coord(r, p, lent, trace)
+        ok = _cible_ok(r, p)
+        if ok:
+            break
+        _appuyer(r, "UFC_CLR")
+        _appuyer(r, "UFC_CLR")
+        r.attendre(0.8)
+    if ok and p.alt_m is not None:
         _appuyer(r, f"{_pb(DDI_G)}14")
         r.attendre(0.6)
-        if option_ufc(r, "ELEV", attendu=False) and option_ufc(r, "FEET", attendu=False):
-            taper(r, str(max(1, int(round(p.alt_m * 3.28084)))))
-            entrer(r)
+        if option_ufc(r, "ELEV", attendu=False):
+            r.attendre(0.5)
+            if option_ufc(r, "FEET", attendu=False):
+                r.attendre(0.5)
+                taper(r, str(max(1, int(round(p.alt_m * 3.28084)))))
+                entrer(r)
         _appuyer(r, "UFC_CLR")
     _appuyer(r, "UFC_CLR")
     r.attendre(0.8)
     d = _ddi(r)
-    ok = (d["tgt_lat"] is not None and d["tgt_lon"] is not None
-          and abs(d["tgt_lat"] - p.lat) < 0.0003 and abs(d["tgt_lon"] - p.lon) < 0.0003)
     if getattr(r, "boite", None) is not None:
         r.boite.ecrire("jdam_cible", station=d["station"], point=p.dict(),
-                       relu=(d["tgt_lat"], d["tgt_lon"]), ok=ok, msn=d["texte"][:20000])
+                       relu=(d["tgt_lat"], d["tgt_lon"]), ok=ok, trace=trace, msn=d["texte"][:20000])
     return ok
 
 

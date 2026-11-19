@@ -204,6 +204,9 @@ $("#b-jdam-prog").onclick = () => {
   $$("#jdam-stations select").forEach((s) => { if (s.value !== "") plan[s.dataset.st] = s.value; });
   agir("jdam_programmer", { plan });
 };
+$("#b-ap-cap").onclick = () => agir("ap_cap", { vers: "actuel" });
+$("#b-ap-wpt").onclick = () => agir("ap_cap", { vers: "wpt", num: $("#ap-wpt").value });
+$("#b-ap-deg").onclick = () => agir("ap_cap", { vers: "cap", cap: $("#ap-deg").value });
 $("#b-jdam-too").onclick = () => agir("jdam_too", { num: $("#jdam-too-wpt").value });
 
 // coordonnees tapees : N41 55.200 E041 51.500  /  N 41°55'12" E 41°51'30"  /  41.92, 41.86
@@ -301,6 +304,8 @@ function rendreJdam() {
     if (!stations.length) div.insertAdjacentHTML("beforeend", '<div class="aide">Pas de JDAM vues à bord (stations par défaut).</div>');
     const too = $("#jdam-too-wpt"), v = too.value;
     too.innerHTML = optionsWpt(v || choisi || "");
+    const ap = $("#ap-wpt"), va = ap.value;
+    if (document.activeElement !== ap) ap.innerHTML = optionsWpt(va || "");
   }
 }
 

@@ -74,33 +74,58 @@ class Copilote:
         threading.Thread(target=self._larguer, args=(sorte,), daemon=True).start()
 
     def _larguer(self, sorte):
-        """Leurres : DISPENSER sur ON, et dans DCS il faut aussi le master arm et un
-        mode A/A ou A/G (constate par toi le 15 nov.). Sur BYPASS, plus rien ne partait."""
-        from .avion import POS
+        """Leurres. Constate en vol le 19 nov. : sur ON rien ne part (l'ALE-47 reste
+        en veille), sur BYPASS (position 2) un appui = un leurre. Dans DCS il faut
+        aussi un mode A/A ou A/G : le copilote passe en A/G tout seul si besoin.
+        La position qui marche est retenue."""
         if not self._verrou_leurres.acquire(blocking=False):
             return
         try:
             b, a, x = self.b, self.a, self.export
-            if b.lire("CMSD_DISPENSE_SW") != POS["CMSD_DISPENSE_SW"]["ON"]:
-                b.envoyer("CMSD_DISPENSE_SW", POS["CMSD_DISPENSE_SW"]["ON"])
-                time.sleep(0.4)
-            manque = []
-            if not a.arme:
-                manque.append("master arm")
-            if not (a.allume("MASTER_MODE_AA_LT") or a.allume("MASTER_MODE_AG_LT")):
-                manque.append("mode A/A ou A/G")
-            if manque:
-                self.dire("Leurres : " + " et ".join(manque) + " requis.")
-                return
-            avant = x.leurres if (x is not None and x.vivant) else None
-            ok = self._appui_leurres(sorte, avant)
+            voulue = int(self.cfg.get("leurres_position", 2))
+            essais = []
+            ok = None
+            for position in (voulue, 1 if voulue == 2 else 2):
+                if b.lire("CMSD_DISPENSE_SW") != position:
+                    b.envoyer("CMSD_DISPENSE_SW", position)
+                    time.sleep(0.5)
+                avant = x.leurres if (x is not None and x.vivant) else None
+                ok = self._appui_leurres(sorte, avant)
+                essais.append({"position": position, "ok": ok, "mode": self._mode_combat()})
+                if ok is False and not self._mode_combat() and not a.au_sol:
+                    b.envoyer("MASTER_MODE_AG", 1)
+                    time.sleep(0.3)
+                    b.envoyer("MASTER_MODE_AG", 0)
+                    time.sleep(0.8)
+                    if self._mode_combat():
+                        self.dire("Mode air-sol engagé pour les leurres.")
+                        ok = self._appui_leurres(sorte, avant)
+                        essais.append({"position": position, "ok": ok, "mode": True})
+                if ok is not False:
+                    break
+            if ok and self.cfg.get("leurres_position") != essais[-1]["position"]:
+                self.cfg["leurres_position"] = essais[-1]["position"]
+                try:
+                    from .chemins import sauver_config
+                    sauver_config(self.cfg)
+                except OSError:
+                    pass
             if ok is False:
-                self.dire("Négatif, aucun largage.")
-                self.boite.ecrire("largage_sans_effet", leurre=sorte, leurres=avant,
-                                  dispenser=b.lire("CMSD_DISPENSE_SW"),
+                manque = []
+                if not a.arme:
+                    manque.append("master arm")
+                if not self._mode_combat():
+                    manque.append("mode A/A ou A/G")
+                self.dire("Négatif, aucun largage." + (" Il manque : " + " et ".join(manque) + "." if manque else ""))
+                self.boite.ecrire("largage_sans_effet", leurre=sorte, essais=essais,
+                                  leurres=x.leurres if x is not None else None,
+                                  dispenser=b.lire("CMSD_DISPENSE_SW"), arme=bool(a.arme),
                                   args=dict(x.args) if x is not None else None)
         finally:
             self._verrou_leurres.release()
+
+    def _mode_combat(self):
+        return bool(self.a.allume("MASTER_MODE_AA_LT") or self.a.allume("MASTER_MODE_AG_LT"))
 
     def _appui_leurres(self, sorte, avant):
         """Un appui sur l'interrupteur de la manette. -> True/False, None si invérifiable."""

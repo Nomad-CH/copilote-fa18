@@ -348,7 +348,8 @@ def page_mission(app):
         Touche("A/P\nOFF", "", ROUGE, lambda: app.ex.lancer("ap_off")),
 
         _proc(app, "jdam_too", "JDAM\nSUR WPT"),
-        VIDE, VIDE, VIDE, VIDE,
+        _proc(app, "ap_cap_actuel", "A/P\nGARDE CAP"),
+        VIDE, VIDE, VIDE,
         Touche("FENÊTRE", getattr(app, "mode_fenetre", "").upper(), GRIS,
                lambda: app.fenetre("suivante")),
     ] + _ligne_etat(app)

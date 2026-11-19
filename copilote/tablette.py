@@ -336,6 +336,23 @@ class Tablette:
         if quoi == "aller":
             nav.cible = int(d["num"])
             return proc("aller_wpt")
+        if quoi == "ap_cap":
+            vers = d.get("vers")
+            if vers == "wpt":
+                if d.get("num") in (None, ""):
+                    return {"ok": False, "message": "Choisis un waypoint."}
+                nav.cap_demande = ("wpt", int(d["num"]))
+            elif vers == "cap":
+                try:
+                    cap = int(str(d.get("cap")).strip())
+                except ValueError:
+                    return {"ok": False, "message": "Cap de 0 à 359."}
+                if not 0 <= cap <= 360:
+                    return {"ok": False, "message": "Cap de 0 à 359."}
+                nav.cap_demande = cap
+            else:
+                nav.cap_demande = None
+            return proc("ap_cap")
 
         # --- TACAN
         if quoi == "tacan_ajouter":
