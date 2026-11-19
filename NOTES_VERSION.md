@@ -1,4 +1,6 @@
-**Version 0.16.1** — QR code de la tablette
+**Version 0.16.2** — la tablette sur téléphone
 
-- Corrigé : le QR code ne s'affichait pas dans la fenêtre TABLETTE. Il est maintenant dessiné directement.
-- Si le QR code ne peut pas s'afficher, la fenêtre le dit et l'adresse reste à taper dans Chrome.
+- Corrigé : sur téléphone, le bas de l'écran était coupé et on ne pouvait pas faire défiler. Le panneau du bas défile maintenant.
+- Téléphone debout : bandeau plus compact, carte plus petite, plus de place pour les boutons.
+- Téléphone couché : tout le bandeau sur une ligne, carte à gauche, boutons à droite.
+- QR code dessiné directement dans la fenêtre TABLETTE (0.16.1).
