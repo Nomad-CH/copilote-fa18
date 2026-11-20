@@ -104,9 +104,11 @@ class Copilote:
             avant = x.leurres if (x is not None and x.vivant) else None
             ok = self._appui_leurres(sorte, avant)
             if ok is False:
-                time.sleep(0.4)
-                ok = self._appui_leurres(sorte, avant, 0.6)  # un deuxieme appui, plus long
+                time.sleep(0.3)
+                ok = self._appui_leurres(sorte, avant, 0.4, "bios")   # l'autre methode en secours
+            self._relacher_largage()
             self.trace.action("copilote", "largage " + sorte, auto=auto, ok=ok,
+                              methode=getattr(self, "_methode_leurres", None),
                               avant=list(avant) if avant else None,
                               apres=list(x.leurres) if x is not None and x.leurres else None)
             if ok is False:
@@ -123,7 +125,7 @@ class Copilote:
                                   mode=self._mode_combat(),
                                   args=dict(x.args) if x is not None else None)
         finally:
-            b.envoyer("THROTTLE_DISP_SW", 1)                 # interrupteur de largage toujours relache
+            self._relacher_largage()                         # interrupteur de largage toujours relache
             self._verrou_leurres.release()
 
     def _mode_combat(self):
@@ -140,17 +142,43 @@ class Copilote:
             time.sleep(0.1)
         return x.leurres or avant
 
-    def _appui_leurres(self, sorte, avant, duree=0.25):
-        """Un appui sur l'interrupteur de largage de la manette, toujours relache ensuite.
-        -> True/False, None si invérifiable."""
+    def _appui_direct(self, sorte, duree):
+        """Appui sur l'interrupteur de largage par le lien DCS. C'est la seule methode
+        qui largue a chaque fois : par DCS-BIOS, seul le premier appui marchait (trace
+        du vol du 20 nov. a 22 h 35)."""
+        x = self.export
+        cmd, val = (3032, 1) if sorte == "chaff" else (3033, -1)
+        x.clic(13, cmd, val)
+        time.sleep(duree)
+        x.clic(13, cmd, 0)
+        time.sleep(0.05)
+        x.clic(13, cmd, 0)                                   # relachement envoye deux fois
+
+    def _appui_bios(self, sorte, duree):
         b = self.b
-        b.envoyer("THROTTLE_DISP_SW", 1)                     # part du centre
+        b.envoyer("THROTTLE_DISP_SW", 1)
         time.sleep(0.15)
         b.envoyer("THROTTLE_DISP_SW", 2 if sorte == "chaff" else 0)
         time.sleep(duree)
         b.envoyer("THROTTLE_DISP_SW", 1)
         time.sleep(0.05)
-        b.envoyer("THROTTLE_DISP_SW", 1)                     # relachement envoye deux fois
+        b.envoyer("THROTTLE_DISP_SW", 1)
+
+    def _relacher_largage(self):
+        x = self.export
+        if x is not None and x.ordres_possibles:
+            x.clic(13, 3032, 0)
+            x.clic(13, 3033, 0)
+        self.b.envoyer("THROTTLE_DISP_SW", 1)
+
+    def _appui_leurres(self, sorte, avant, duree=0.25, methode=None):
+        """Un appui sur l'interrupteur de largage, toujours relache ensuite.
+        -> True/False, None si invérifiable."""
+        x = self.export
+        direct = x is not None and x.ordres_possibles
+        methode = methode or ("direct" if direct else "bios")
+        (self._appui_direct if methode == "direct" and direct else self._appui_bios)(sorte, duree)
+        self._methode_leurres = methode
         if avant is None:
             return None
         apres = self._attendre_largage(avant)

@@ -291,14 +291,34 @@ class Tablette:
         n'est connu que lorsque la page STORES est affichee : on garde le dernier vu."""
         if not vivant:
             return {"stations": [], "obus": None, "stores_vu": None}
-        try:
-            d = lire_ddi(x)
-        except Exception:
-            d = None
-        if d and d["stores"] and d["stations_etat"]:
-            self._stores_vu = (time.time(), d["stations_etat"])
-        quand, lu = getattr(self, "_stores_vu", (0, {}))
+        # la page STORES (ou JDAM) peut etre sur n'importe lequel des trois ecrans
+        import types as _types
+        from .armement import CODES_STORES
         emport = x.stations()
+        prets = getattr(self, "_prets", set())
+        t = x.temps_modele
+        if t is not None:
+            if t < getattr(self, "_t_armes", 0) - 5:    # nouvelle mission : on oublie l'etat lu
+                prets, self._stores_vu = set(), (0, {})
+            self._t_armes = t
+        for i in (2, 3, 4):
+            try:
+                d = lire_ddi(_types.SimpleNamespace(vivant=True, ecrans={2: x.ecrans.get(i, "")}))
+            except Exception:
+                continue
+            if not d:
+                continue
+            if d["stores"] and d["stations_etat"]:
+                self._stores_vu = (time.time(), d["stations_etat"])
+            # RDY sous le type encadre : toutes les armes de ce type sont pretes, et le restent
+            if d["rdy"] and d["type_encadre"] in CODES_STORES:
+                court = CODES_STORES[d["type_encadre"]][1]
+                prets |= {st for st, (nom, n) in emport.items() if n and famille(nom)[1] == court}
+                if not getattr(self, "_stores_vu", None):
+                    self._stores_vu = (time.time(), {})
+        prets = {st for st in prets if emport.get(st, ("", 0))[1]}
+        self._prets = prets
+        quand, lu = getattr(self, "_stores_vu", (0, {}))
         out = []
         for st in range(1, 10):
             nom, n = emport.get(st, ("", 0))
@@ -309,7 +329,7 @@ class Tablette:
             if not n:
                 e = {}
             out.append({"st": st, "nom": nom, "n": n, "famille": fam, "court": court,
-                        "type": e.get("type"), "etat": e.get("etat"),
+                        "type": e.get("type"), "etat": "RDY" if st in prets else e.get("etat"),
                         "double": bool(e.get("double")) or n > 1, "choisie": bool(e.get("choisie"))})
         return {"stations": out, "obus": (x.emport or {}).get("obus"),
                 "stores_vu": round(time.time() - quand) if quand else None}

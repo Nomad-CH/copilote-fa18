@@ -96,6 +96,7 @@ def lire_ddi(export, ecran=DDI_G):
         "jdam": "ALGN_QUAL" in txt and "Master_Arm_Status" in txt,
         "jdam_type": jdam_type,
         "types_haut": types_haut, "type_encadre": type_encadre, "stations_types": stations_types,
+        "rdy": present("RDY"),             # l'arme choisie est prete (RDY sous son nom)
         "efuz_menu": present("INST") and (present("DLY1") or present("OFF")) and not present("EFUZ"),
         "mode": "TOO" if present("TOO") else ("PP" if present("PP") else None),
         "fusee": (val("JDAM_EFUZ_Val") or "").strip(),

@@ -466,7 +466,7 @@ def _demarrage(porte_avions):
         Regle("RADAR_SW", "OPR"),
         Regle("OBOGS_SW", 1),
         Regle("FLIR_SW", "STBY"),
-        Regle("CMSD_DISPENSE_SW", "ON"),
+        Regle("CMSD_DISPENSE_SW", "BYPASS"),
         Regle("ECM_MODE_SW", "STBY"),
         Regle("UFC_COMM1_VOL", 45000, verifie=False),
         Regle("UFC_COMM2_VOL", 45000, verifie=False),
@@ -572,7 +572,7 @@ FENCE_IN = [
     Regle("MASTER_ARM_SW", "ARM"),
     Regle("RADAR_SW", "OPR"),
     Appelle(_rwr_si_besoin, "RWR"),
-    Regle("CMSD_DISPENSE_SW", "ON"),
+    Regle("CMSD_DISPENSE_SW", "BYPASS"),
     Regle("ECM_MODE_SW", "REC"),
     Regle("IR_COOL_SW", "NORM"),
     *FEUX_OFF,
@@ -658,7 +658,7 @@ AIR_AIR = [
     Regle("RADAR_SW", "OPR"),
     Regle("IR_COOL_SW", "NORM"),
     Si(lambda a: not a.allume("MASTER_MODE_AA_LT"), [Appui("MASTER_MODE_AA")]),
-    Regle("CMSD_DISPENSE_SW", "ON"),
+    Regle("CMSD_DISPENSE_SW", "BYPASS"),
     Dit("Mode air-air. Armement actif."),
 ]
 
@@ -666,7 +666,7 @@ AIR_SOL = [
     Regle("MASTER_ARM_SW", "ARM"),
     Si(lambda a: not a.allume("MASTER_MODE_AG_LT"), [Appui("MASTER_MODE_AG")]),
     Regle("FLIR_SW", "ON"),
-    Regle("CMSD_DISPENSE_SW", "ON"),
+    Regle("CMSD_DISPENSE_SW", "BYPASS"),
     Dit("Mode air-sol. Armement actif. Laser sur sécurité."),
 ]
 

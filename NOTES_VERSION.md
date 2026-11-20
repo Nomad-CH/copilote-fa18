@@ -1,8 +1,6 @@
-**Version 0.20.1** — cap, largage, et un diagnostic qui raconte le vol
+**Version 0.20.2** — leurres automatiques, cap en HSEL, armes prêtes
 
-- Pilote auto : si HSEL est déjà engagé, le copilote change seulement le cap, sans le couper.
-- Pilote auto refusé : le copilote dit pourquoi (« incliné de 12 degrés », « descente de 3000 pieds par minute »).
-- LARGUER (JETTISON) n'apparaît que pour les stations 2, 3, 5, 7 et 8.
-- Leurres : deuxième appui plus long si le premier ne donne rien, et chaque appui est noté.
-- Diagnostic : nouvelle « trace de vol » (l'état de l'avion toutes les 5 secondes et à chaque changement, plus chaque action demandée sur la tablette ou le Stream Deck). Le zip ne garde que les 3 derniers jours.
-- Lien avec DCS (version 5) : inclinaison, assiette, vitesse verticale, facteur de charge, voyants d'alarme, émetteurs vus par le détecteur de menaces. **DCS doit être relancé une fois.**
+- Leurres : la trace de vol a montré que, par l'ancienne méthode, seul le premier appui larguait. Le copilote appuie maintenant sur l'interrupteur par le lien direct avec DCS, à chaque fois. C'est ce qui bloquait la défense AUTO.
+- DISPENSER mis sur BYPASS dès le démarrage et le fence in.
+- Cap en HSEL : le copilote croyait voir la saisie du cap alors que l'UFC affichait le menu du pilote auto (qui contient aussi le mot HSEL). Il attend maintenant la vraie saisie avant de taper le cap.
+- Écran ARMES : quand RDY est affiché sous le type choisi (J-82, J-83), toutes les armes de ce type passent au vert et le restent. La page STORES est lue sur les trois écrans, pas seulement le DDI gauche.

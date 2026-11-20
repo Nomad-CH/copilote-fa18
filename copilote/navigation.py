@@ -909,6 +909,13 @@ def _ufc_texte(b):
             + " " + " ".join(options_ufc(b))).upper()
 
 
+def _saisie_hsel(b):
+    """L'UFC attend-il un cap ? HSEL y est affiche, et ce n'est PAS le menu du pilote
+    automatique (qui montre lui aussi HSEL, a cote de ATTH et BALT)."""
+    t = _ufc_texte(b).replace(" ", "")
+    return "HSEL" in t and "ATTH" not in t and "BALT" not in t
+
+
 def regler_hsel(r, cible):
     """Regle le cap selecte comme dans l'avion : interrupteur HDG maintenu jusqu'a ce
     que HSEL s'affiche sur l'UFC, puis le cap tape au clavier et ENT. (Les appuis
@@ -920,7 +927,7 @@ def regler_hsel(r, cible):
         vu = False
         while r.horloge() < fin:
             r.attendre(0.25)
-            if "HSEL" in _ufc_texte(r.b).replace(" ", ""):
+            if _saisie_hsel(r.b):
                 vu = True
                 break
     finally:
