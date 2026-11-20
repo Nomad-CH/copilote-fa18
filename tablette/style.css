@@ -171,35 +171,29 @@ details.saisie .rangee { margin-top: 8px; }
 
 /* ARMES : vue de l'avion */
 #avion-armes svg { width: 100%; height: auto; display: block; touch-action: manipulation; }
-/* dessin au trait, facon plan d'atelier : papier bleu, quadrillage, traits clairs */
-#avion-armes .papier { fill: #0B2236; }
-#avion-armes .grille { fill: none; stroke: #1A3A56; stroke-width: .5; }
-#avion-armes .hornet .trait { fill: #0F2B44; stroke: #D7ECF8; stroke-width: .9; stroke-linejoin: round; }
-#avion-armes .hornet .plein { fill: #123250; }
-#avion-armes .hornet .sombre { fill: #061523; }
-#avion-armes .hornet .verre { fill: #1B4A63; }
-#avion-armes .hornet .fin { fill: none; stroke: #8FB9D3; stroke-width: .5; }
-#avion-armes .hornet .axe { fill: none; stroke: #4F7A99; stroke-width: .5; stroke-dasharray: 7 2 1.5 2; }
-#avion-armes .charge circle { fill: #123250; stroke: #D7ECF8; stroke-width: .8; }
-#avion-armes .charge circle.fin { fill: none; stroke: #8FB9D3; stroke-width: .5; }
-#avion-armes .charge path { fill: none; stroke: #D7ECF8; stroke-width: .7; }
-#avion-armes .corps, #avion-armes .kit, #avion-armes .missile, #avion-armes .reservoir {
-  fill: #123250; stroke: #D7ECF8; stroke-width: .75; stroke-linejoin: round; }
-#avion-armes .kit { fill: #1A4266; }
-#avion-armes .ail { fill: #0F2B44; stroke: #D7ECF8; stroke-width: .65; stroke-linejoin: round; }
-#avion-armes .detail { fill: none; stroke: #8FB9D3; stroke-width: .45; }
-#avion-armes .jaune { fill: #F2C230; }
-#avion-armes .brun { fill: #C8742A; }
-#avion-armes .verre { fill: #2F6F8F; stroke: #D7ECF8; stroke-width: .5; }
-#avion-armes .st .fil { fill: none; stroke: #4F7A99; stroke-width: .8; }
-#avion-armes .st.vide .fil { stroke-dasharray: 2 3; stroke: #2F5270; }
-#avion-armes .st.sel .fil { stroke: var(--vert); stroke-width: 1.6; }
-#avion-armes .st rect.fond { fill: #0A1D2E; stroke: #4F7A99; stroke-width: 1; }
-#avion-armes .st.vide rect.fond { stroke-dasharray: 3 4; stroke: #2F5270; fill: transparent; }
-#avion-armes .st.sel rect.fond { fill: #0E2E22; stroke: var(--vert); stroke-width: 2.6; }
-#avion-armes .st text { font-family: inherit; fill: #D7ECF8; font-size: 9.5px; text-anchor: middle; }
+/* dessin au trait vert sur noir, comme le reste de l'application */
+#avion-armes .hornet .trait { fill: #0A0E0B; stroke: var(--vert); stroke-width: .9; stroke-linejoin: round; }
+#avion-armes .hornet .plein { fill: #0E1611; }
+#avion-armes .hornet .sombre { fill: #050806; }
+#avion-armes .hornet .verre { fill: #10261A; }
+#avion-armes .hornet .fin { fill: none; stroke: var(--ligne); stroke-width: .6; }
+#avion-armes .corps, #armes-profil .corps { fill: #0E1611; stroke: var(--vert); stroke-width: .8; stroke-linejoin: round; }
+#avion-armes .ail, #armes-profil .ail { fill: #10261A; stroke: var(--vert); stroke-width: .6; stroke-linejoin: round; }
+#avion-armes .detail, #armes-profil .detail { fill: none; stroke: var(--pale); stroke-width: .45; opacity: .75; }
+#avion-armes .point { fill: var(--vert); }
+#avion-armes .rack { fill: #10261A; stroke: var(--vert); stroke-width: .7; }
+#avion-armes .fil { fill: none; stroke: var(--ligne); stroke-width: .8; }
+#avion-armes .fil.vide { stroke-dasharray: 2 3; stroke: var(--gris); }
+#avion-armes .fil.sel { stroke: var(--vert); stroke-width: 1.6; }
+#avion-armes .st rect.fond { fill: #0A0E0B; stroke: var(--ligne); stroke-width: 1; }
+#avion-armes .st.vide rect.fond { stroke-dasharray: 3 4; stroke: var(--gris); fill: transparent; }
+#avion-armes .st.sel rect.fond { fill: #10261A; stroke: var(--vert); stroke-width: 2.6; }
+#avion-armes .st.sel .corps { stroke: #DFFFE8; }
+#armes-profil svg { width: 100%; height: auto; max-height: 120px; display: block; }
+#armes-profil text { font-family: inherit; fill: var(--pale); font-size: 10px; text-anchor: middle; }
+#avion-armes .st text { font-family: inherit; fill: var(--pale); font-size: 9.5px; text-anchor: middle; }
 #avion-armes .st text.nb { fill: var(--ambre); font-weight: bold; font-size: 9px; }
-#avion-armes .st text.num { fill: #8FB9D3; font-size: 9px; }
+#avion-armes .st text.num { fill: var(--gris); font-size: 9px; }
 #avion-armes .st.sel text { fill: var(--vert); font-weight: bold; }
 #avion-armes .pt.pret, .legende .pt.pret { fill: var(--vert); background: var(--vert); }
 #avion-armes .pt.attente, .legende .pt.attente { fill: var(--ambre); background: var(--ambre); }

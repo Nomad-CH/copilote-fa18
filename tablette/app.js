@@ -354,104 +354,141 @@ function etatArme(a) {
   if (e) return "attente";
   return "inconnu";
 }
-// Silhouettes des armes, nez en haut, dessinees dans une boite de 22 x 80.
-// Chaque arme garde ce qui la fait reconnaitre : ailettes, kit de queue, tete chercheuse.
-const m2 = (d) => `<path class="ail" d="${d}"/><path class="ail" transform="scale(-1,1)" d="${d}"/>`;
-const PROFILS = {
-  bombe: (k) => `<g transform="translate(0,${78 - 66 * k}) scale(${k})">
-      ${m2("M4 54 L10 64 L10 68 L3 61 Z")}
-      <path class="corps" d="M0 0 C5 6 6.5 14 6.5 24 L6.5 46 L3.5 62 L-3.5 62 L-6.5 46 L-6.5 24 C-6.5 14 -5 6 0 0Z"/>
-      <path class="detail" d="M-6.5 24 H6.5 M-6.5 46 H6.5 M0 54 V62"/>
-      <rect class="jaune" x="-5" y="9" width="10" height="3"/></g>`,
-  jdam: (k) => `<g transform="translate(0,${78 - 68 * k}) scale(${k})">
-      ${m2("M6.5 24 L8.5 27 L8.5 40 L6.5 43 Z")}
-      ${m2("M4.5 52 L10 62 L10 68 L4 62 Z")}
-      <path class="corps" d="M0 0 C5 6 6.5 14 6.5 24 L6.5 46 L5 50 L5 66 L-5 66 L-5 50 L-6.5 46 L-6.5 24 C-6.5 14 -5 6 0 0Z"/>
-      <rect class="kit" x="-5" y="50" width="10" height="16"/>
-      <path class="detail" d="M-6.5 24 H6.5 M-6.5 46 H6.5 M-5 56 H5 M0 50 V66"/>
-      <rect class="jaune" x="-5" y="9" width="10" height="3"/></g>`,
-  laser: (k) => `<g transform="translate(0,${78 - 72 * k}) scale(${k})">
-      ${m2("M2.5 10 L9 17 L9 20 L2.5 17 Z")}
-      ${m2("M4.5 50 L11 64 L11 72 L4 62 Z")}
-      <rect class="kit" x="-2.2" y="0" width="4.4" height="7" rx="2"/>
-      <rect class="ail" x="-4.5" y="2" width="9" height="2.2"/>
-      <path class="kit" d="M-2.5 7 L2.5 7 L4 20 L-4 20 Z"/>
-      <path class="corps" d="M-4 20 C-6.5 24 -6.5 28 -6.5 32 L-6.5 48 L-4 62 L4 62 L6.5 48 L6.5 32 C6.5 28 6.5 24 4 20 Z"/>
-      <path class="detail" d="M-6.5 34 H6.5 M-6.5 48 H6.5 M-3.4 13 H3.4"/>
-      <rect class="jaune" x="-6" y="27" width="12" height="3"/></g>`,
-  aim9: () => `${m2("M2 9 L7.5 16 L7.5 18 L2 16 Z")}${m2("M2 58 L9.5 66 L9.5 76 L2 74 Z")}
-      <path class="missile" d="M0 0 C1.6 1 2 3 2 6 L2 78 L-2 78 L-2 6 C-2 3 -1.6 1 0 0Z"/>
-      <rect class="verre" x="-2" y="1.5" width="4" height="4" rx="2"/><rect class="brun" x="-2" y="44" width="4" height="2.5"/>`,
-  aim120: () => `${m2("M2.6 32 L8.5 42 L8.5 46 L2.6 44 Z")}${m2("M2.6 62 L8.5 68 L8.5 76 L2.6 74 Z")}
-      <path class="missile" d="M0 0 C2 4 2.6 8 2.6 13 L2.6 78 L-2.6 78 L-2.6 13 C-2.6 8 -2 4 0 0Z"/>
-      <rect class="jaune" x="-2.6" y="20" width="5.2" height="2"/><rect class="brun" x="-2.6" y="50" width="5.2" height="2.5"/>`,
-  aim7: () => `${m2("M3.2 28 L11 40 L11 46 L3.2 44 Z")}${m2("M3.2 62 L9 68 L9 76 L3.2 74 Z")}
-      <path class="missile" d="M0 0 C2.6 4 3.2 9 3.2 15 L3.2 78 L-3.2 78 L-3.2 15 C-3.2 9 -2.6 4 0 0Z"/>
-      <rect class="jaune" x="-3.2" y="22" width="6.4" height="2"/><rect class="brun" x="-3.2" y="52" width="6.4" height="2.5"/>`,
-  maverick: () => `<g transform="translate(0,20)">${m2("M4.5 16 L10.5 44 L10.5 48 L4.5 48 Z")}${m2("M4.5 50 L9 53 L9 57 L4.5 56 Z")}
-      <path class="missile" d="M-4.5 6 L-4.5 58 L4.5 58 L4.5 6 C4.5 2 2.5 0 0 0 C-2.5 0 -4.5 2 -4.5 6Z"/>
-      <path class="verre" d="M-4.5 6 C-4.5 2 -2.5 0 0 0 C2.5 0 4.5 2 4.5 6 Z"/></g>`,
-  harm: () => `${m2("M3 26 L10 34 L10 44 L3 42 Z")}${m2("M3 66 L8 70 L8 77 L3 76 Z")}
-      <path class="missile" d="M0 0 C2.4 5 3 10 3 16 L3 78 L-3 78 L-3 16 C-3 10 -2.4 5 0 0Z"/>
-      <rect class="jaune" x="-3" y="20" width="6" height="2"/><rect class="brun" x="-3" y="54" width="6" height="2.5"/>`,
-  harpoon: () => `${m2("M3.6 34 L10 40 L10 46 L3.6 46 Z")}${m2("M3.6 66 L8.5 69 L8.5 76 L3.6 76 Z")}
-      <path class="missile" d="M-3.6 6 L-3.6 78 L3.6 78 L3.6 6 C3.6 2 2 0 0 0 C-2 0 -3.6 2 -3.6 6Z"/>
-      <rect class="jaune" x="-3.6" y="18" width="7.2" height="2"/><rect class="brun" x="-3.6" y="56" width="7.2" height="2.5"/>`,
-  jsow: () => `<g transform="translate(0,10)">${m2("M5 30 L8 31 L8 46 L5 47 Z")}${m2("M5 58 L9.5 62 L9.5 68 L5 67 Z")}
-      <path class="corps" d="M-3 0 L3 0 L5 8 L5 68 L-5 68 L-5 8 Z"/><rect class="jaune" x="-5" y="14" width="10" height="2.5"/></g>`,
-  bidon: () => `${m2("M4 66 L8.5 70 L8.5 76 L3 74 Z")}
-      <path class="reservoir" d="M0 0 C5 8 7 18 7 30 L7 50 C7 62 4 72 0 79 C-4 72 -7 62 -7 50 L-7 30 C-7 18 -5 8 0 0Z"/>`,
-  pod: () => `<g transform="translate(0,22)"><rect class="ail" x="-2" y="20" width="12" height="5"/>
-      <path class="reservoir" d="M-5 8 L-5 50 C-5 54 -2 56 0 56 C2 56 5 54 5 50 L5 8 Z"/>
-      <circle class="kit" cx="0" cy="6" r="5.5"/><circle class="verre" cx="0" cy="4.5" r="2.6"/></g>`,
-  roquette: () => `<g transform="translate(0,26)"><path class="reservoir" d="M0 0 C4 3 6.5 8 6.5 13 L6.5 50 L-6.5 50 L-6.5 13 C-6.5 8 -4 3 0 0Z"/>
-      <rect class="kit" x="-6.5" y="46" width="13" height="4"/></g>`,
+// ---------------------------------------------------------------- dessins
+// Rien n'est invente : chaque arme est tracee d'apres ses vraies dimensions (metres) :
+// L longueur, D diametre, ailettes (position depuis le nez, corde, demi-envergure).
+// La vue de face et le profil sortent de la meme fiche, tous a la meme echelle.
+const ARMES_DIM = {
+  aim9:    { nom: "Sidewinder", guidage: "infrarouge", L: 2.85, D: 0.127, nez: "dome", ail: [{ pos: 0.25, c: 0.2, h: 0.19, f: "delta" }, { pos: 2.25, c: 0.55, h: 0.315, f: "trap" }], face: [{ a0: 45, h: 0.315 }] },
+  aim120:  { nom: "AMRAAM", guidage: "radar actif", L: 3.66, D: 0.178, nez: "ogive", ail: [{ pos: 1.72, c: 0.4, h: 0.265, f: "delta" }, { pos: 3.3, c: 0.34, h: 0.3, f: "trap" }], face: [{ a0: 45, h: 0.3 }] },
+  aim7:    { nom: "Sparrow", guidage: "radar semi-actif", L: 3.66, D: 0.203, nez: "ogive", ail: [{ pos: 1.5, c: 0.65, h: 0.51, f: "delta" }, { pos: 3.2, c: 0.42, h: 0.4, f: "delta" }], face: [{ a0: 45, h: 0.51 }] },
+  mk82:    { nom: "bombe 500 lb", guidage: "non guidée", L: 2.21, D: 0.273, nez: "bombe", queue: 0.3, ail: [{ pos: 1.72, c: 0.46, h: 0.19, f: "trap" }], face: [{ a0: 45, h: 0.19 }] },
+  mk83:    { nom: "bombe 1000 lb", guidage: "non guidée", L: 3.0, D: 0.357, nez: "bombe", queue: 0.3, ail: [{ pos: 2.35, c: 0.6, h: 0.25, f: "trap" }], face: [{ a0: 45, h: 0.25 }] },
+  mk84:    { nom: "bombe 2000 lb", guidage: "non guidée", L: 3.28, D: 0.457, nez: "bombe", queue: 0.3, ail: [{ pos: 2.6, c: 0.64, h: 0.32, f: "trap" }], face: [{ a0: 45, h: 0.32 }] },
+  gbu38:   { nom: "JDAM 500 lb", guidage: "GPS", L: 2.35, D: 0.273, nez: "bombe", kit: 0.24, ail: [{ pos: 0.72, c: 0.55, h: 0.175, f: "trap" }, { pos: 1.98, c: 0.34, h: 0.25, f: "trap" }], face: [{ a0: 45, h: 0.25 }, { a0: 0, h: 0.175, n: 2 }] },
+  gbu32:   { nom: "JDAM 1000 lb", guidage: "GPS", L: 3.04, D: 0.357, nez: "bombe", kit: 0.22, ail: [{ pos: 0.95, c: 0.7, h: 0.22, f: "trap" }, { pos: 2.6, c: 0.4, h: 0.32, f: "trap" }], face: [{ a0: 45, h: 0.32 }, { a0: 0, h: 0.22, n: 2 }] },
+  gbu31:   { nom: "JDAM 2000 lb", guidage: "GPS", L: 3.88, D: 0.457, nez: "bombe", kit: 0.2, ail: [{ pos: 1.2, c: 0.9, h: 0.28, f: "trap" }, { pos: 3.38, c: 0.46, h: 0.4, f: "trap" }], face: [{ a0: 45, h: 0.4 }, { a0: 0, h: 0.28, n: 2 }] },
+  gbu12:   { nom: "Paveway II 500 lb", guidage: "laser", L: 3.33, D: 0.273, nez: "tete", ail: [{ pos: 0.5, c: 0.22, h: 0.22, f: "delta" }, { pos: 2.62, c: 0.68, h: 0.3, f: "trap" }], face: [{ a0: 45, h: 0.3 }, { a0: 0, h: 0.22 }] },
+  gbu16:   { nom: "Paveway II 1000 lb", guidage: "laser", L: 3.7, D: 0.357, nez: "tete", ail: [{ pos: 0.55, c: 0.25, h: 0.27, f: "delta" }, { pos: 2.9, c: 0.75, h: 0.36, f: "trap" }], face: [{ a0: 45, h: 0.36 }, { a0: 0, h: 0.27 }] },
+  gbu10:   { nom: "Paveway II 2000 lb", guidage: "laser", L: 4.32, D: 0.457, nez: "tete", ail: [{ pos: 0.6, c: 0.28, h: 0.32, f: "delta" }, { pos: 3.45, c: 0.82, h: 0.42, f: "trap" }], face: [{ a0: 45, h: 0.42 }, { a0: 0, h: 0.32 }] },
+  agm65:   { nom: "Maverick", guidage: "laser (E) ou infrarouge (F)", L: 2.49, D: 0.305, nez: "dome", ail: [{ pos: 0.95, c: 1.25, h: 0.36, f: "delta" }, { pos: 2.25, c: 0.2, h: 0.36, f: "trap" }], face: [{ a0: 45, h: 0.36 }] },
+  agm88:   { nom: "HARM", guidage: "antiradar", L: 4.17, D: 0.254, nez: "ogive", ail: [{ pos: 1.55, c: 0.75, h: 0.565, f: "delta" }, { pos: 3.75, c: 0.38, h: 0.32, f: "trap" }], face: [{ a0: 45, h: 0.565 }] },
+  agm84:   { nom: "Harpoon / SLAM", guidage: "antinavire", L: 3.85, D: 0.343, nez: "dome", ail: [{ pos: 1.6, c: 0.45, h: 0.455, f: "trap" }, { pos: 3.45, c: 0.3, h: 0.4, f: "trap" }], face: [{ a0: 45, h: 0.455 }] },
+  agm62:   { nom: "Walleye II", guidage: "télévision", L: 4.04, D: 0.457, nez: "dome", ail: [{ pos: 1.9, c: 1.6, h: 0.65, f: "delta" }], face: [{ a0: 45, h: 0.65 }] },
+  agm154:  { nom: "JSOW", guidage: "GPS, planante", L: 4.06, D: 0.34, nez: "bombe", boite: [0.34, 0.44], ail: [{ pos: 3.6, c: 0.4, h: 0.3, f: "trap" }], face: [{ a0: 45, h: 0.3 }] },
+  adm141:  { nom: "TALD", guidage: "leurre", L: 2.34, D: 0.25, nez: "bombe", boite: [0.25, 0.25], ail: [{ pos: 1.0, c: 0.4, h: 0.4, f: "trap" }], face: [{ a0: 0, h: 0.4, n: 2 }] },
+  bidon:   { nom: "bidon 330 gallons", guidage: "carburant", L: 4.5, D: 0.66, nez: "fuseau", queue: 0.3, ail: [{ pos: 3.75, c: 0.5, h: 0.42, f: "trap" }], face: [{ a0: 0, h: 0.42, n: 2 }] },
+  atflir:  { nom: "pod de ciblage", guidage: "infrarouge et laser", L: 1.83, D: 0.33, nez: "dome", ail: [], face: [], optique: true },
+  lau:     { nom: "panier de roquettes", guidage: "non guidées", L: 2.0, D: 0.4, nez: "dome", ail: [], face: [], tubes: true },
 };
-function profil(a) {
-  const n = (a.nom || "") + " " + (a.court || "");
-  if (a.famille === "jdam") return PROFILS.jdam(/31|J-84|J-109/.test(n) ? 1.12 : /32|J-83/.test(n) ? 1.04 : 0.94);
-  if (a.famille === "laser") return PROFILS.laser(/-10|-24/.test(n) ? 1.08 : /-16/.test(n) ? 1.0 : 0.92);
-  if (a.famille === "bombe") return PROFILS.bombe(/84/.test(n) ? 1.15 : /83/.test(n) ? 1.05 : 0.95);
-  if (a.famille === "aa") return /AIM-9|9[MXL]/.test(n) ? PROFILS.aim9() : /AIM-7|7[MF]/.test(n) ? PROFILS.aim7() : PROFILS.aim120();
-  if (a.famille === "slam" || a.famille === "walleye" || a.famille === "tald") return PROFILS.harpoon();
-  return (PROFILS[a.famille] || PROFILS.bombe)(1);
+function ficheArme(a) {
+  const n = ((a.nom || "") + " " + (a.court || "") + " " + (a.type || "")).toUpperCase();
+  const t = [[/AIM-?9|\b9[MXL]\b/, "aim9"], [/AIM-?120|\bA[MB]\b/, "aim120"], [/AIM-?7|\b7[MFP]/, "aim7"],
+    [/GBU-?38|J-82/, "gbu38"], [/GBU-?32|J-83/, "gbu32"], [/GBU-?31|J-84|J-109/, "gbu31"],
+    [/GBU-?12/, "gbu12"], [/GBU-?16/, "gbu16"], [/GBU-?(10|24)/, "gbu10"],
+    [/AGM-?65|MAV/, "agm65"], [/AGM-?88|HARM/, "agm88"], [/AGM-?84|HARPOON|SLAM/, "agm84"],
+    [/AGM-?62|WALLEYE/, "agm62"], [/AGM-?154|JSOW/, "agm154"], [/ADM-?141|TALD/, "adm141"],
+    [/MK[-_ ]?84/, "mk84"], [/MK[-_ ]?83/, "mk83"], [/MK|BDU|CBU|ROCKEYE/, "mk82"],
+    [/LAU|ZUNI|HYDRA|ROQ/, "lau"], [/FPU|FUEL|BIDON/, "bidon"], [/FLIR|LITENING|POD|AAQ|ASQ/, "atflir"]];
+  for (const [re, cle] of t) if (re.test(n)) return ARMES_DIM[cle];
+  return ARMES_DIM[{ aa: "aim120", jdam: "gbu38", laser: "gbu12", bidon: "bidon", pod: "atflir" }[a.famille] || "mk82"];
+}
+const f1 = (v) => Math.round(v * 10) / 10;
+// Vue de face : le corps (rond ou caisson) et ses ailettes, a l'echelle k (pixels par metre).
+function vueFace(d, k) {
+  const r = (d.D / 2) * k;
+  let out = "";
+  (d.face || []).forEach((jeu) => {
+    const n = jeu.n || 4;
+    for (let i = 0; i < n; i++) {
+      const ang = ((jeu.a0 + (360 / n) * i) * Math.PI) / 180, c = Math.cos(ang), s2 = Math.sin(ang);
+      const w = Math.max(0.7, r * 0.22), h = jeu.h * k;
+      const p = (dist, lat) => `${f1(c * dist - s2 * lat)} ${f1(s2 * dist + c * lat)}`;
+      out += `<path class="ail" d="M${p(r * 0.85, -w)} L${p(h, -w * 0.35)} L${p(h, w * 0.35)} L${p(r * 0.85, w)} Z"/>`;
+    }
+  });
+  if (d.boite) {
+    const [w, h] = [d.boite[0] * k, d.boite[1] * k];
+    out += `<rect class="corps" x="${f1(-w / 2)}" y="${f1(-h / 2)}" width="${f1(w)}" height="${f1(h)}" rx="${f1(w * 0.18)}"/>`;
+  } else {
+    out += `<circle class="corps" r="${f1(r)}"/>`;
+  }
+  if (d.tubes) {
+    for (let i = 0; i < 6; i++) out += `<circle class="detail" cx="${f1(Math.cos(i * 1.047) * r * 0.58)}" cy="${f1(Math.sin(i * 1.047) * r * 0.58)}" r="${f1(r * 0.2)}"/>`;
+    out += `<circle class="detail" r="${f1(r * 0.2)}"/>`;
+  } else if (d.optique) {
+    out += `<circle class="detail" r="${f1(r * 0.62)}"/><circle class="detail" cx="${f1(-r * 0.15)}" cy="${f1(r * 0.1)}" r="${f1(r * 0.3)}"/>`;
+  } else {
+    out += `<circle class="detail" r="${f1(Math.max(0.5, r * 0.5))}"/><circle class="point" r="${f1(Math.max(0.35, r * 0.12))}"/>`;
+  }
+  return out;
+}
+// Profil, nez a gauche, a l'echelle k.
+function vueProfil(d, k) {
+  const r = (d.D / 2) * k, L = d.L * k;
+  const nl = { dome: r * 1.1, ogive: d.D * 2.4 * k, bombe: d.D * 1.7 * k, tete: d.D * 1.2 * k, fuseau: d.D * 2.6 * k }[d.nez] || r;
+  const xq = d.queue ? L * (1 - d.queue) : L, rq = d.queue ? r * (d.nez === "fuseau" ? 0.12 : 0.42) : r;
+  const rk = d.kit ? r * 0.82 : r, xk = d.kit ? L * (1 - d.kit) : L;
+  let out = "";
+  (d.ail || []).forEach((a) => {
+    const x0 = a.pos * k, x1 = (a.pos + a.c) * k, h = a.h * k, xt = a.f === "delta" ? x0 + (x1 - x0) * 0.78 : x0 + (x1 - x0) * 0.42;
+    [-1, 1].forEach((s2) => (out += `<path class="ail" d="M${f1(x0)} ${f1(s2 * r * 0.8)} L${f1(xt)} ${f1(s2 * h)} L${f1(x1)} ${f1(s2 * h)} L${f1(x1)} ${f1(s2 * r * 0.8)} Z"/>`));
+  });
+  if (d.nez === "tete") {      // tete chercheuse laser : petit corps et sa bague, devant la bombe
+    out += `<path class="corps" d="M0 ${f1(-r * 0.3)} H${f1(nl * 0.5)} L${f1(nl)} ${f1(-r * 0.62)} V${f1(r * 0.62)} L${f1(nl * 0.5)} ${f1(r * 0.3)} H0 Z"/>
+      <rect class="ail" x="${f1(nl * 0.08)}" y="${f1(-r * 0.62)}" width="${f1(nl * 0.14)}" height="${f1(r * 1.24)}"/>
+      <path class="corps" d="M${f1(nl)} ${f1(-r * 0.62)} Q${f1(nl * 1.6)} ${f1(-r)} ${f1(nl * 2.2)} ${f1(-r)} H${f1(L * 0.8)} L${f1(L)} ${f1(-r * 0.5)} V${f1(r * 0.5)} L${f1(L * 0.8)} ${f1(r)} H${f1(nl * 2.2)} Q${f1(nl * 1.6)} ${f1(r)} ${f1(nl)} ${f1(r * 0.62)} Z"/>`;
+  } else {
+    out += `<path class="corps" d="M0 0 Q${f1(nl * 0.35)} ${f1(-r)} ${f1(nl)} ${f1(-r)} H${f1(Math.min(xq, xk))}
+      ${d.kit ? `L${f1(xk + r * 0.3)} ${f1(-rk)} H${f1(L)} V${f1(rk)} H${f1(xk + r * 0.3)} L${f1(xk)} ${f1(r)}` : `L${f1(L)} ${f1(-rq)} V${f1(rq)} L${f1(xq)} ${f1(r)}`}
+      H${f1(nl)} Q${f1(nl * 0.35)} ${f1(r)} 0 0 Z"/>`;
+  }
+  // l'ailette qui nous fait face, et les jonctions du corps
+  (d.ail || []).forEach((a) => (out += `<path class="detail" d="M${f1((a.pos + a.c * 0.2) * k)} 0 H${f1((a.pos + a.c) * k)}"/>`));
+  out += `<path class="detail" d="M${f1(nl)} ${f1(-r)} V${f1(r)}${d.kit ? ` M${f1(xk)} ${f1(-r)} V${f1(r)}` : ""}${d.queue ? ` M${f1(xq)} ${f1(-r)} V${f1(r)}` : ""}"/>`;
+  if (d.optique) out += `<circle class="detail" cx="${f1(r * 0.9)}" cy="0" r="${f1(r * 0.6)}"/>`;
+  return out;
 }
 function dessinArme(a, x) {
   if (!a.n) return "";
-  const un = (cx, k) => `<g transform="translate(${cx},124) scale(${k})">${profil(a)}</g>`;
-  return a.n >= 2 ? un(x - 10, 0.86) + un(x + 10, 0.86) : un(x, 1);
+  const d = ficheArme(a), demi = Math.max(d.D / 2, ...(d.face || []).map((j) => j.h), d.boite ? d.boite[1] / 2 : 0);
+  const deux = a.n >= 2, place = deux ? 10.5 : 21;
+  const k = Math.min(62, place / demi);                 // meme echelle pour toutes, reduite si l'arme deborde
+  const un = (cx) => `<g transform="translate(${cx},166)">${vueFace(d, k)}</g>`;
+  if (!deux) return un(x);
+  return `<path class="rack" d="M${x - 11} 141 H${x + 11} L${x + 9} 146 H${x - 9} Z M${x} 136 V141"/>` + un(x - 11) + un(x + 11);
 }
-// Emplacement reel des 9 points d'emport sur l'avion vu de face (x, y du bas du pylone)
-const PYLONES = [[434, 77], [362, 88], [310, 86], [256, 93], [230, 96], [204, 93], [150, 86], [98, 88], [26, 77]];
+// Le Hornet vu de face, trace d'apres ses cotes : 35 pixels par metre, plan de l'aile a y = 100.
+// Envergure 11,43 m, derives inclinees de 20 degres, aile a 3 degres de diedre negatif,
+// pylones a 2,24 m et 3,35 m de l'axe.
+const ECH = 35;
+const PYLONES = [[430, 106], [347, 120], [308, 120], [262, 131], [230, 134], [198, 131], [152, 120], [113, 120], [30, 106]];
 function hornetDeFace(sts) {
-  // charges accrochees, vues de face : un rond et ses ailettes en croix
   const charges = sts.map((a) => {
     if (!a.n) return "";
-    const [px, py] = PYLONES[a.st - 1];
-    const r = a.famille === "bidon" ? 7 : a.famille === "aa" ? 2.6 : a.famille === "pod" ? 4.5 : 4.2;
-    const un = (cx) => `<g class="charge" transform="translate(${cx},${py + r})">
-        ${a.famille === "bidon" || a.famille === "pod" ? "" : `<path d="M${-r - 3} ${-r - 3} L${r + 3} ${r + 3} M${r + 3} ${-r - 3} L${-r - 3} ${r + 3}"/>`}
-        <circle r="${r}"/><circle class="fin" r="${Math.max(0.8, r * 0.3)}"/></g>`;
-    return a.n >= 2 ? un(px - r - 1.2) + un(px + r + 1.2) : un(px);
+    const [px, py] = PYLONES[a.st - 1], d = ficheArme(a), r = (d.D / 2) * ECH;
+    const bas = d.boite ? (d.boite[1] / 2) * ECH : r;
+    const un = (cx) => `<g transform="translate(${cx},${f1(py + bas + 0.8)})">${vueFace(d, ECH)}</g>`;
+    const ecart = Math.max(r, 3.2) + 1.6;
+    return a.n >= 2 ? `<path class="rack" d="M${f1(px - ecart)} ${py} H${f1(px + ecart)}"/>` + un(f1(px - ecart)) + un(f1(px + ecart)) : un(px);
   }).join("");
   const miroir = (d, cls) => `<path class="${cls}" d="${d}"/><path class="${cls}" transform="translate(460,0) scale(-1,1)" d="${d}"/>`;
   return `<g class="hornet">
-    <path class="axe" d="M230 2 V104"/>
-    ${miroir("M205 74 L150 84.5 L150 86.5 L205 80 Z", "trait")}
-    ${miroir("M209 60 L172 7 L176 4.5 L216 56 Z", "trait")}
-    ${miroir("M205 58 L177 14 M174 9.5 L170 8", "fin")}
-    ${miroir("M204 63 L34 73.5 L34 76.5 L204 71 Z", "trait")}
-    ${miroir("M196 66.5 L60 74.8 M150 69.6 L150 73", "fin")}
-    ${miroir("M22 71.5 H35 V78 H22 Z M35 73.5 H39 M22 73.5 H19", "trait")}
-    ${miroir("M95.5 73 L100.5 73 L99.5 88 L96.5 88 Z M147.5 71 L152.5 71 L151.5 86 L148.5 86 Z", "trait")}
-    <path class="trait plein" d="M198 62 C203 51 215 46 230 46 C245 46 257 51 262 62 C269.5 68 269.5 83 262 91 C254 98 242 96 238 87 L222 87 C218 96 206 98 198 91 C190.5 83 190.5 68 198 62 Z"/>
-    ${miroir("M198 79 C198 71 203 66 209 67 C214 68 217 74 216.5 80 C216 88 211 92 206 91 C201 90 198 85 198 79 Z", "trait sombre")}
-    ${miroir("M201 79 C201 73.5 204.5 70 208.5 70.5 C212 71 214 75.5 213.5 80 C213 85.5 210 88.5 206.5 88 C203 87.5 201 83.5 201 79 Z", "fin")}
-    <circle class="trait plein" cx="230" cy="71" r="13.5"/>
-    <circle class="fin" cx="230" cy="71" r="8.5"/><circle class="fin" cx="230" cy="71" r="1.6"/>
-    <path class="trait verre" d="M217.5 57 C217.5 41 223.5 32 230 32 C236.5 32 242.5 41 242.5 57 C238 53.5 222 53.5 217.5 57 Z"/>
-    <path class="fin" d="M221 54.6 C221.5 43.5 225.5 37 230 37 C234.5 37 238.5 43.5 239 54.6 M230 32 V37"/>
-    <path class="fin" d="M222 87 L224 93 H236 L238 87 M230 93 V97"/>
+    ${miroir("M199 104.5 L115 109.6 L115 111 L199 108.5 Z", "trait")}
+    ${miroir("M198.5 84 L173.5 14 L176.5 13 L203.5 82 Z", "trait")}
+    ${miroir("M196 80 L176 22", "fin")}
+    ${miroir("M195 95 L36 103 L36 105.5 L195 103.5 Z", "trait")}
+    ${miroir("M190 97.2 L60 103.4 M152 99 V103.8 M113 100.9 V104", "fin")}
+    ${miroir("M24 101.5 H36 V107 H24 Z", "trait")}
+    ${miroir("M150.5 104 H153.5 L153 120 H151 Z M111.5 104.5 H114.5 L114 120 H112 Z", "trait")}
+    <path class="trait plein" d="M215 84 C208 85 199 89 195 95 L195 103.5 C187 106 184.5 116 188 124 C192 133.5 206 136 214 130 C217 127.5 219 126 222 126 L238 126 C241 126 243 127.5 246 130 C254 136 268 133.5 272 124 C275.5 116 273 106 265 103.5 L265 95 C261 89 252 85 245 84 Z"/>
+    ${miroir("M191 117 C191 110 195 106 201 106.5 C206 107 209.5 110.5 210 116 C210.5 123 207 129 201.5 129.5 C195.5 130 191 124 191 117 Z", "trait sombre")}
+    ${miroir("M194 117 C194 112 197 109.3 201 109.6 C204.5 110 207 112.6 207.2 116.6 C207.5 121.6 205 126 201.3 126.4 C197 126.8 194 122.5 194 117 Z", "fin")}
+    <circle class="trait plein" cx="230" cy="109" r="14.7"/>
+    <circle class="fin" cx="230" cy="109" r="9.2"/><circle class="point" cx="230" cy="109" r="1.3"/>
+    <path class="trait verre" d="M215.3 84.5 C215.3 67 222 57 230 57 C238 57 244.7 67 244.7 84.5 C240 81 220 81 215.3 84.5 Z"/>
+    <path class="fin" d="M219 82.4 C219.6 70 224.5 62.5 230 62.5 C235.5 62.5 240.4 70 241 82.4 M230 57 V62.5"/>
+    <path class="fin" d="M222 126 L224.5 131.5 H235.5 L238 126"/>
     ${charges}</g>`;
 }
 function rendreArmes() {
@@ -472,21 +509,25 @@ function rendreArmes() {
     const x = XS[a.st - 1], [px, py] = PYLONES[a.st - 1];
     const cls = ["st", a.famille, a.n ? "" : "vide", selArmes.has(a.st) ? "sel" : ""].join(" ");
     return `<g class="${cls}" data-st="${a.st}">
-      <path class="fil" d="M${px} ${py + (a.n ? 9 : 2)} L${px} 104 L${x} 110 L${x} 116"/>
-      <rect class="fond" x="${x - 23}" y="116" width="46" height="96" rx="6"/>
+      <rect class="fond" x="${x - 23}" y="124" width="46" height="84" rx="6"/>
       ${dessinArme(a, x)}
-      ${a.n ? `<circle class="pt ${etatArme(a)}" cx="${x + 16}" cy="123" r="4"/>` : ""}
-      <text class="num" x="${x - 15}" y="127">${a.st}</text>
-      ${a.n >= 2 ? `<text class="nb" x="${x}" y="127">×${a.n}</text>` : ""}
-      <text x="${x}" y="224">${esc((a.court || "").replace(/^(AIM-120)\w$/, "$1"))}</text>
+      ${a.n ? `<circle class="pt ${etatArme(a)}" cx="${x + 16}" cy="131" r="4"/>` : ""}
+      <text class="num" x="${x - 15}" y="135">${a.st}</text>
+      ${a.n >= 2 ? `<text class="nb" x="${x}" y="202">×${a.n}</text>` : ""}
+      <text x="${x}" y="220">${esc((a.court || "").replace(/^(AIM-120)\w$/, "$1"))}</text>
     </g>`;
   }).join("");
-  zone.innerHTML = `<svg viewBox="0 0 460 232" role="img" aria-label="Avion vu de face et armement">
-    <defs><pattern id="quadrillage" width="23" height="23" patternUnits="userSpaceOnUse">
-      <path class="grille" d="M23 0 H0 V23"/></pattern></defs>
-    <rect class="papier" x="0" y="0" width="460" height="232" rx="8"/>
-    <rect x="0" y="0" width="460" height="232" rx="8" fill="url(#quadrillage)"/>
-    ${hornetDeFace(toutes)}${stations}</svg>`;
+  // l'avion occupe le haut (charges a leur vraie place et a l'echelle), les cases sont dessous
+  // un trait relie chaque point d'emport a sa case
+  const fils = toutes.map((a) => {
+    const x = XS[a.st - 1], [px, py] = PYLONES[a.st - 1], d = a.n ? ficheArme(a) : null;
+    const bas = d ? Math.max(d.D, d.boite ? d.boite[1] : 0) * ECH + 5 : 3;
+    const cls = "fil" + (a.n ? "" : " vide") + (selArmes.has(a.st) ? " sel" : "");
+    return `<path class="${cls}" d="M${px} ${f1(py - 6 + bas)} L${px} ${f1(Math.max(py - 6 + bas, 146))} L${x} 154 V158"/>`;
+  }).join("");
+  zone.innerHTML = `<svg viewBox="0 0 460 262" role="img" aria-label="Avion vu de face et armement">
+    <g transform="translate(0,-6)">${hornetDeFace(toutes)}</g>
+    ${fils}<g transform="translate(0,34)">${stations}</g></svg>`;
   zone.querySelectorAll("g.st").forEach((g) => {
     g.onclick = () => {
       const st = Number(g.dataset.st), a = sts.find((x) => x.st === st);
@@ -517,12 +558,18 @@ function rendreArmes() {
   // ce qu'on peut faire avec la selection
   const titre = $("#armes-titre"), pj = $("#p-jdam"), pa = $("#p-autre");
   titre.classList.toggle("choix", choisies.length > 0);
+  $("#armes-profil").hidden = !choisies.length;
   if (!choisies.length) {
     titre.textContent = "Touche une arme sur l'avion. Tu peux en toucher plusieurs du même type.";
     pj.hidden = pa.hidden = true;
   } else {
     const total = choisies.reduce((n, a) => n + a.n, 0), fam = choisies[0].famille;
+    const d = ficheArme(choisies[0]);
     titre.textContent = `${total} × ${choisies[0].court} · station${choisies.length > 1 ? "s" : ""} ${choisies.map((a) => a.st).join(", ")}`;
+    // le profil de l'arme choisie, a l'echelle (70 pixels par metre)
+    $("#armes-profil").innerHTML = `<svg viewBox="0 0 340 96" role="img" aria-label="Profil de l'arme">
+      <g transform="translate(${f1((340 - d.L * 70) / 2)},42)">${vueProfil(d, 70)}</g>
+      <text x="170" y="92">${esc(d.nom)} · ${esc(d.guidage)} · ${String(d.L).replace(".", ",")} m</text></svg>`;
     pj.hidden = fam !== "jdam";
     pa.hidden = fam === "jdam";
     pa.textContent = {

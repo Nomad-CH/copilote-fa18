@@ -1,5 +1,6 @@
-**Version 0.19.2** — écran ARMES façon plan d'atelier
+**Version 0.19.3** — écran ARMES en vert sur noir, tracé d'après les vraies dimensions
 
-- Dessin au trait sur fond bleu quadrillé : le Hornet vu de face (verrière, nez, entrées d'air, dérives, pylônes) et chaque arme avec sa silhouette.
-- Vue de face : la station 9 est à gauche de l'image, la station 1 à droite, comme sur ton guide de référence.
-- Charges visibles sous l'avion, à leur vraie place, reliées à leur case.
+- Retour au vert sur noir de l'application.
+- Le Hornet vu de face est tracé d'après ses cotes : envergure, dérives inclinées, pylônes à leur vraie distance de l'axe.
+- Chaque arme est dessinée d'après ses vraies dimensions, vue de face, sous l'avion à l'échelle et en plus grand dans sa case. Pylône double : deux armes sous leur support.
+- Quand tu choisis une arme, son profil s'affiche à l'échelle avec son nom, son guidage et sa longueur.
