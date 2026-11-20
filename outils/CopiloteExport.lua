@@ -1,4 +1,4 @@
--- Lien entre DCS et le copilote F/A-18 (version 4).
+-- Lien entre DCS et le copilote F/A-18 (version 5).
 -- Charge par Export.lua. Envoie au copilote, sur cet ordinateur uniquement
 -- (127.0.0.1, port UDP 7790) : le texte du RWR, le texte des ecrans du
 -- cockpit, l'emport, la position de l'avion et celle du centre de la vue
@@ -95,7 +95,7 @@ local function positions()
 	local s = appel("LoGetSelfData")
 	if type(s) == "table" and type(s.LatLongAlt) == "table" then
 		av = { lat = s.LatLongAlt.Lat, lon = s.LatLongAlt.Long, alt = s.LatLongAlt.Alt,
-			cap = s.Heading }
+			cap = s.Heading, tang = s.Pitch, incl = s.Bank }
 	end
 	local cam = appel("LoGetCameraPosition")
 	if type(cam) == "table" and type(cam.p) == "table" then
@@ -106,6 +106,52 @@ local function positions()
 		end
 	end
 	return av, vue
+end
+
+-- Ce que l'avion "ressent" : sert a expliquer un refus (pilote auto, largage...)
+-- et a reconstituer le vol dans le diagnostic.
+local function vol()
+	local r = {}
+	local vv = appel("LoGetVerticalVelocity")
+	if type(vv) == "number" then r.vz = vv end
+	local g = appel("LoGetAccelerationUnits")
+	if type(g) == "table" and type(g.y) == "number" then r.g = g.y end
+	local aoa = appel("LoGetAngleOfAttack")
+	if type(aoa) == "number" then r.aoa = aoa end
+	local ias = appel("LoGetIndicatedAirSpeed")
+	if type(ias) == "number" then r.vi = ias end
+	local ralt = appel("LoGetAltitudeAboveGroundLevel")
+	if type(ralt) == "number" then r.hsol = ralt end
+	return r
+end
+
+-- Voyants d'alarme allumes (noms donnes par DCS), 12 au plus.
+local function alarmes()
+	local m = appel("LoGetMCPState")
+	if type(m) ~= "table" then return nil end
+	local r = {}
+	for nom, v in pairs(m) do
+		if v == true and #r < 12 then r[#r + 1] = tostring(nom) end
+	end
+	return r
+end
+
+-- Emetteurs vus par le detecteur de menaces, quand DCS veut bien les donner :
+-- type, azimut, puissance, et surtout le genre de signal (veille, accrochage, missile).
+local function emetteurs()
+	local t = appel("LoGetTWSInfo")
+	if type(t) ~= "table" or type(t.Emitters) ~= "table" then return nil end
+	local r = {}
+	for _, e in pairs(t.Emitters) do
+		if type(e) == "table" and #r < 8 then
+			local nom = ""
+			if type(e.Type) == "table" then
+				nom = appel("LoGetNameByType", e.Type.level1, e.Type.level2, e.Type.level3, e.Type.level4) or ""
+			end
+			r[#r + 1] = { nom = nom, az = e.Azimuth, p = e.Power, s = e.SignalType, pr = e.Priority }
+		end
+	end
+	return r
 end
 
 local function envoyer(paquet)
@@ -182,6 +228,7 @@ local function image()
 		CE.sols = nil
 		envoyer({
 			pos = av, vue = vue, args = arguments(), sols = sols,
+			vol = vol(), alarmes = alarmes(), emetteurs = emetteurs(),
 			k = "etat", t = t,
 			avion = type(self) == "table" and self.Name or "",
 			rwr = ecran(7),

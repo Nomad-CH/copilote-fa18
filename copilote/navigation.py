@@ -813,6 +813,24 @@ def regler_tacan(r, pilote=False):
 
 
 # ---------------------------------------------------------- pilote auto
+def _pourquoi_refus(r):
+    """Ce que l'avion fait au moment du refus, pour dire quoi corriger."""
+    x = r.export
+    pos = getattr(x, "position", None) or {}
+    vol = getattr(x, "vol", None) or {}
+    incl, tang, vz = pos.get("incl"), pos.get("tang"), vol.get("vz")
+    raisons = []
+    if isinstance(incl, (int, float)) and abs(math.degrees(incl)) > 5:
+        raisons.append(f"incliné de {abs(round(math.degrees(incl)))} degrés")
+    if isinstance(tang, (int, float)) and abs(math.degrees(tang)) > 10:
+        raisons.append(f"nez à {round(math.degrees(tang))} degrés")
+    if isinstance(vz, (int, float)) and abs(vz) * 196.85 > 2000:
+        raisons.append(f"{'montée' if vz > 0 else 'descente'} de {int(round(abs(vz) * 196.85, -2))} pieds par minute")
+    if raisons:
+        return " L'avion est " + ", ".join(raisons) + ". Stabilise à plat, puis réessaie."
+    return " Avion stabilisé, ailes à plat, manche au neutre, puis réessaie."
+
+
 def _pilote(libelle, message):
     def action(r):
         if r.a.au_sol:
@@ -822,6 +840,8 @@ def _pilote(libelle, message):
         for essai in range(3):
             _appuyer(r, "UFC_AP")
             r.attendre(0.5)
+            if option_choisie(r.b, libelle):
+                break                                    # deja engage : y rappuyer le couperait
             if (libelle != "CPL" and libelle not in options_ufc(r.b)
                     and option_choisie(r.b, "CPL")):
                 # couple sur la navigation : l'avion cache HSEL et ATTH. On decouple d'abord.
@@ -846,8 +866,7 @@ def _pilote(libelle, message):
                                options=options_ufc(r.b),
                                reperes=[r.b.lire(f"UFC_OPTION_CUEING_{i}") for i in range(1, 6)],
                                vitesse=r.a.vitesse, altitude=r.a.altitude)
-            raise Echec("Pilote auto refusé. Avion stabilisé, ailes à plat, manche au neutre, "
-                        "puis réessaie.")
+            raise Echec("Pilote auto refusé." + _pourquoi_refus(r))
         r.dire(message)
     return action
 

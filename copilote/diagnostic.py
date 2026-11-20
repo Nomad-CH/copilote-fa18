@@ -46,7 +46,7 @@ def creer_zip(app=None):
     """Cree le zip dans le dossier de donnees et renvoie son chemin."""
     sortie = os.path.join(DONNEES, f"diagnostic_copilote_{time.strftime('%Y%m%d_%H%M')}.zip")
     os.makedirs(DONNEES, exist_ok=True)
-    limite = time.time() - 14 * 86400
+    limite = time.time() - 3 * 86400          # les 3 derniers jours suffisent (zip plus leger)
     with zipfile.ZipFile(sortie, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("rapport.txt", rapport(app))
         z.writestr("journal.txt", _lire(JOURNAL, 300000))
@@ -57,8 +57,10 @@ def creer_zip(app=None):
             nom = os.path.basename(d)
             z.writestr(f"{nom}/Export.lua", _lire(os.path.join(d, "Scripts", "Export.lua")))
             log = _lire(os.path.join(d, "Logs", "dcs.log"))
+            # seulement ce qui concerne les scripts : les erreurs de textures ou de mission
+            # de DCS ne nous apprennent rien
             garde = [l for l in log.splitlines() if any(m in l for m in (
-                "Export", "BIOS", "Copilote", "LuaExport", "ERROR"))]
+                "Export", "BIOS", "Copilote", "LuaExport", "LUA", "Lua", "SCRIPTING"))]
             z.writestr(f"{nom}/dcs_log_extrait.txt", "\n".join(garde[-400:]))
             for f in touches.fichiers_diff_hornet([d]):
                 z.write(f, f"{nom}/touches/" + os.path.basename(f))

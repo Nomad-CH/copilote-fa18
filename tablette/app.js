@@ -246,7 +246,7 @@ $("#b-jettison").onclick = () => {
   }
   jettisonPret = false;
   b.textContent = "LARGUER (JETTISON)";
-  agir("jettison", { stations: Array.from(selArmes) });
+  agir("jettison", { stations: Array.from(selArmes).filter((st) => [2, 3, 5, 7, 8].includes(st)) });
 };
 $("#b-jdam-too").onclick = () => agir("jdam_too", { num: $("#jdam-too-wpt").value, stations: Array.from(selArmes) });
 $$("#jdam-mode button").forEach((b) => (b.onclick = () => { jdamMode = b.dataset.m; $("#avion-armes").dataset.sig = ""; rendreArmes(); }));
@@ -702,7 +702,8 @@ function rendreArmes() {
   const titre = $("#armes-titre"), pj = $("#p-jdam"), jet = $("#armes-jettison");
   titre.classList.toggle("choix", choisies.length > 0);
   $("#armes-profil").hidden = !choisies.length;
-  jet.hidden = !choisies.length;
+  // le largage selectif n'existe que sur les stations 2, 3, 5, 7 et 8
+  jet.hidden = !choisies.some((a) => [2, 3, 5, 7, 8].includes(a.st));
   jettisonPret = false;
   $("#b-jettison").textContent = "LARGUER (JETTISON)";
   if (!choisies.length) {

@@ -336,6 +336,11 @@ class Tablette:
         from .procedures import PROCEDURES
         app, nav = self.app, self.app.nav
         quoi = d.get("action")
+        try:
+            self.app.trace.action("tablette", quoi, **{k: v for k, v in d.items()
+                                                       if k != "action" and isinstance(v, (str, int, float, list))})
+        except Exception:
+            pass
 
         def proc(cle):
             if not app.b.en_f18:

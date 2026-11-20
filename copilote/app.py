@@ -38,6 +38,9 @@ class Copilote:
         from .chemins import DONNEES
         from .navigation import Carnet, SuiviWaypoints
         import os as _os
+        from .trace import Trace
+        self.trace = Trace(self.boite.dossier)
+        self._derniere_trace = 0.0
         self.nav = Carnet(_os.path.join(DONNEES, "points.json"))
         self.nav.tacan = 0
         self.ex.nav = self.nav
@@ -102,7 +105,10 @@ class Copilote:
             ok = self._appui_leurres(sorte, avant)
             if ok is False:
                 time.sleep(0.4)
-                ok = self._appui_leurres(sorte, avant)      # un deuxieme appui, sans rien changer d'autre
+                ok = self._appui_leurres(sorte, avant, 0.6)  # un deuxieme appui, plus long
+            self.trace.action("copilote", "largage " + sorte, auto=auto, ok=ok,
+                              avant=list(avant) if avant else None,
+                              apres=list(x.leurres) if x is not None and x.leurres else None)
             if ok is False:
                 manque = []
                 if not a.arme:
@@ -134,14 +140,14 @@ class Copilote:
             time.sleep(0.1)
         return x.leurres or avant
 
-    def _appui_leurres(self, sorte, avant):
+    def _appui_leurres(self, sorte, avant, duree=0.25):
         """Un appui sur l'interrupteur de largage de la manette, toujours relache ensuite.
         -> True/False, None si invérifiable."""
         b = self.b
         b.envoyer("THROTTLE_DISP_SW", 1)                     # part du centre
-        time.sleep(0.08)
+        time.sleep(0.15)
         b.envoyer("THROTTLE_DISP_SW", 2 if sorte == "chaff" else 0)
-        time.sleep(0.2)
+        time.sleep(duree)
         b.envoyer("THROTTLE_DISP_SW", 1)
         time.sleep(0.05)
         b.envoyer("THROTTLE_DISP_SW", 1)                     # relachement envoye deux fois
@@ -414,6 +420,7 @@ class Copilote:
                 self._confirme = (index, time.time() + 3.0)
                 return
             self._confirme = (None, 0.0)
+        self.trace.action("stream deck", (t.titre or t.valeur or "").replace("\n", " "))
         try:
             t.action()
         except Exception as ex:
@@ -437,6 +444,13 @@ class Copilote:
                 self.surv.tick()
             except Exception as ex:   # la surveillance ne doit jamais arreter le copilote
                 self.boite.erreur("surveillance", ex)
+
+        if en_f18 and maintenant - self._derniere_trace > 1.0:
+            self._derniere_trace = maintenant
+            try:
+                self.trace.tick(self)
+            except Exception as ex:
+                self.boite.erreur("trace", ex)
 
         if en_f18 and maintenant - self._dernier_suivi > 1.0 and self.export is not None:
             self._dernier_suivi = maintenant

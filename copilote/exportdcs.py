@@ -126,6 +126,9 @@ class ExportDCS:
         self.position = None        # avion : lat, lon, alt (m), cap (rad)
         self.vue = None             # centre de la vue / carte F10 : lat, lon, sol (m), haut (m)
         self.args = {}              # position de quelques commandes du cockpit (argument DCS -> valeur)
+        self.vol = {}               # vz (m/s), g, aoa, vi (m/s), hsol (m)  -- lien version 5
+        self.alarmes = []           # voyants d'alarme allumes
+        self.emetteurs = []         # emetteurs vus par le detecteur de menaces
         self.temps_modele = None    # horloge de la mission (repart de zero a chaque mission)
         self.sols = {}              # reponses aux demandes d'altitude du sol
         self._n_sol = 0
@@ -229,6 +232,9 @@ class ExportDCS:
                         self.sols[int(k)] = float(v)
             if isinstance(paquet.get("args"), dict):
                 self.args = {int(k): float(v) for k, v in paquet["args"].items()}
+            self.vol = paquet.get("vol") if isinstance(paquet.get("vol"), dict) else {}
+            self.alarmes = paquet.get("alarmes") if isinstance(paquet.get("alarmes"), list) else []
+            self.emetteurs = paquet.get("emetteurs") if isinstance(paquet.get("emetteurs"), list) else []
             self.dernier = maintenant
         elif k == "ecran":
             try:
