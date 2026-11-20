@@ -344,7 +344,8 @@ function optionsWpt(valeur) {
 // arme pour la choisir ; plusieurs armes identiques peuvent etre choisies ensemble.
 const selArmes = new Set();
 let jdamMode = "PP";
-const XS = [26, 77, 128, 179, 230, 281, 332, 383, 434];      // stations 1 a 9
+// Vue de face : l'aile gauche de l'avion (station 1) est a droite de l'image.
+const XS = [434, 383, 332, 281, 230, 179, 128, 77, 26];      // stations 1 a 9
 
 function nomArme(a) { return (a.nom || "").replace(/\(V\)\d\/B/, ""); }
 function etatArme(a) {
@@ -360,12 +361,14 @@ const PROFILS = {
   bombe: (k) => `<g transform="translate(0,${78 - 66 * k}) scale(${k})">
       ${m2("M4 54 L10 64 L10 68 L3 61 Z")}
       <path class="corps" d="M0 0 C5 6 6.5 14 6.5 24 L6.5 46 L3.5 62 L-3.5 62 L-6.5 46 L-6.5 24 C-6.5 14 -5 6 0 0Z"/>
+      <path class="detail" d="M-6.5 24 H6.5 M-6.5 46 H6.5 M0 54 V62"/>
       <rect class="jaune" x="-5" y="9" width="10" height="3"/></g>`,
   jdam: (k) => `<g transform="translate(0,${78 - 68 * k}) scale(${k})">
       ${m2("M6.5 24 L8.5 27 L8.5 40 L6.5 43 Z")}
       ${m2("M4.5 52 L10 62 L10 68 L4 62 Z")}
       <path class="corps" d="M0 0 C5 6 6.5 14 6.5 24 L6.5 46 L5 50 L5 66 L-5 66 L-5 50 L-6.5 46 L-6.5 24 C-6.5 14 -5 6 0 0Z"/>
       <rect class="kit" x="-5" y="50" width="10" height="16"/>
+      <path class="detail" d="M-6.5 24 H6.5 M-6.5 46 H6.5 M-5 56 H5 M0 50 V66"/>
       <rect class="jaune" x="-5" y="9" width="10" height="3"/></g>`,
   laser: (k) => `<g transform="translate(0,${78 - 72 * k}) scale(${k})">
       ${m2("M2.5 10 L9 17 L9 20 L2.5 17 Z")}
@@ -374,6 +377,7 @@ const PROFILS = {
       <rect class="ail" x="-4.5" y="2" width="9" height="2.2"/>
       <path class="kit" d="M-2.5 7 L2.5 7 L4 20 L-4 20 Z"/>
       <path class="corps" d="M-4 20 C-6.5 24 -6.5 28 -6.5 32 L-6.5 48 L-4 62 L4 62 L6.5 48 L6.5 32 C6.5 28 6.5 24 4 20 Z"/>
+      <path class="detail" d="M-6.5 34 H6.5 M-6.5 48 H6.5 M-3.4 13 H3.4"/>
       <rect class="jaune" x="-6" y="27" width="12" height="3"/></g>`,
   aim9: () => `${m2("M2 9 L7.5 16 L7.5 18 L2 16 Z")}${m2("M2 58 L9.5 66 L9.5 76 L2 74 Z")}
       <path class="missile" d="M0 0 C1.6 1 2 3 2 6 L2 78 L-2 78 L-2 6 C-2 3 -1.6 1 0 0Z"/>
@@ -418,31 +422,36 @@ function dessinArme(a, x) {
   return a.n >= 2 ? un(x - 10, 0.86) + un(x + 10, 0.86) : un(x, 1);
 }
 // Emplacement reel des 9 points d'emport sur l'avion vu de face (x, y du bas du pylone)
-const PYLONES = [[26, 73], [98, 82], [148, 80], [208, 86], [230, 90], [252, 86], [312, 80], [362, 82], [434, 73]];
+const PYLONES = [[434, 77], [362, 88], [310, 86], [256, 93], [230, 96], [204, 93], [150, 86], [98, 88], [26, 77]];
 function hornetDeFace(sts) {
+  // charges accrochees, vues de face : un rond et ses ailettes en croix
   const charges = sts.map((a) => {
     if (!a.n) return "";
     const [px, py] = PYLONES[a.st - 1];
-    const r = a.famille === "bidon" ? 6.5 : a.famille === "aa" ? 2.6 : 4;
-    const cls = a.famille === "aa" ? "missile" : a.famille === "bidon" || a.famille === "pod" ? "reservoir" : "corps";
-    const un = (cx) => `<circle class="${cls}" cx="${cx}" cy="${py + r}" r="${r}"/>`;
-    return a.n >= 2 ? un(px - r - 0.6) + un(px + r + 0.6) : un(px);
+    const r = a.famille === "bidon" ? 7 : a.famille === "aa" ? 2.6 : a.famille === "pod" ? 4.5 : 4.2;
+    const un = (cx) => `<g class="charge" transform="translate(${cx},${py + r})">
+        ${a.famille === "bidon" || a.famille === "pod" ? "" : `<path d="M${-r - 3} ${-r - 3} L${r + 3} ${r + 3} M${r + 3} ${-r - 3} L${-r - 3} ${r + 3}"/>`}
+        <circle r="${r}"/><circle class="fin" r="${Math.max(0.8, r * 0.3)}"/></g>`;
+    return a.n >= 2 ? un(px - r - 1.2) + un(px + r + 1.2) : un(px);
   }).join("");
-  const aile = "M206 60 L30 68 L26 70 L30 72.5 L206 70 Z";
-  const derive = "M214 50 L188 6 L194 5 L223 46 Z";
-  const plan = "M206 66 L146 78 L146 80.5 L206 72 Z";
-  const pylones = [[98, 71, 82], [148, 70, 80]].map(([x, y1, y2]) => `<path class="pylone" d="M${x - 2.5} ${y1} L${x + 2.5} ${y1} L${x + 1.5} ${y2} L${x - 1.5} ${y2} Z"/><path class="pylone" d="M${460 - x - 2.5} ${y1} L${460 - x + 2.5} ${y1} L${460 - x + 1.5} ${y2} L${460 - x - 1.5} ${y2} Z"/>`).join("");
+  const miroir = (d, cls) => `<path class="${cls}" d="${d}"/><path class="${cls}" transform="translate(460,0) scale(-1,1)" d="${d}"/>`;
   return `<g class="hornet">
-    <path class="plan" d="${plan}"/><path class="plan" transform="translate(460,0) scale(-1,1)" d="${plan}"/>
-    <path class="derive" d="${derive}"/><path class="derive" transform="translate(460,0) scale(-1,1)" d="${derive}"/>
-    <path class="aile" d="${aile}"/><path class="aile" transform="translate(460,0) scale(-1,1)" d="${aile}"/>
-    <rect class="rail" x="22" y="68.5" width="9" height="4.5" rx="1.5"/><rect class="rail" x="429" y="68.5" width="9" height="4.5" rx="1.5"/>
-    ${pylones}
-    <path class="fuselage" d="M196 60 C200 50 214 44 230 44 C246 44 260 50 264 60 L266 76 C262 86 250 90 244 86 L238 78 L222 78 L216 86 C210 90 198 86 194 76 Z"/>
-    <path class="entree" d="M198 66 C198 62 204 60 212 61 L218 76 C214 85 204 85 199 78 Z"/>
-    <path class="entree" d="M262 66 C262 62 256 60 248 61 L242 76 C246 85 256 85 261 78 Z"/>
-    <circle class="nez" cx="230" cy="64" r="12.5"/><circle class="nez2" cx="230" cy="64" r="5"/>
-    <path class="verriere" d="M219 52 C220 38 226 32 230 32 C234 32 240 38 241 52 C237 48 223 48 219 52 Z"/>
+    <path class="axe" d="M230 2 V104"/>
+    ${miroir("M205 74 L150 84.5 L150 86.5 L205 80 Z", "trait")}
+    ${miroir("M209 60 L172 7 L176 4.5 L216 56 Z", "trait")}
+    ${miroir("M205 58 L177 14 M174 9.5 L170 8", "fin")}
+    ${miroir("M204 63 L34 73.5 L34 76.5 L204 71 Z", "trait")}
+    ${miroir("M196 66.5 L60 74.8 M150 69.6 L150 73", "fin")}
+    ${miroir("M22 71.5 H35 V78 H22 Z M35 73.5 H39 M22 73.5 H19", "trait")}
+    ${miroir("M95.5 73 L100.5 73 L99.5 88 L96.5 88 Z M147.5 71 L152.5 71 L151.5 86 L148.5 86 Z", "trait")}
+    <path class="trait plein" d="M198 62 C203 51 215 46 230 46 C245 46 257 51 262 62 C269.5 68 269.5 83 262 91 C254 98 242 96 238 87 L222 87 C218 96 206 98 198 91 C190.5 83 190.5 68 198 62 Z"/>
+    ${miroir("M198 79 C198 71 203 66 209 67 C214 68 217 74 216.5 80 C216 88 211 92 206 91 C201 90 198 85 198 79 Z", "trait sombre")}
+    ${miroir("M201 79 C201 73.5 204.5 70 208.5 70.5 C212 71 214 75.5 213.5 80 C213 85.5 210 88.5 206.5 88 C203 87.5 201 83.5 201 79 Z", "fin")}
+    <circle class="trait plein" cx="230" cy="71" r="13.5"/>
+    <circle class="fin" cx="230" cy="71" r="8.5"/><circle class="fin" cx="230" cy="71" r="1.6"/>
+    <path class="trait verre" d="M217.5 57 C217.5 41 223.5 32 230 32 C236.5 32 242.5 41 242.5 57 C238 53.5 222 53.5 217.5 57 Z"/>
+    <path class="fin" d="M221 54.6 C221.5 43.5 225.5 37 230 37 C234.5 37 238.5 43.5 239 54.6 M230 32 V37"/>
+    <path class="fin" d="M222 87 L224 93 H236 L238 87 M230 93 V97"/>
     ${charges}</g>`;
 }
 function rendreArmes() {
@@ -472,7 +481,11 @@ function rendreArmes() {
       <text x="${x}" y="224">${esc((a.court || "").replace(/^(AIM-120)\w$/, "$1"))}</text>
     </g>`;
   }).join("");
-  zone.innerHTML = `<svg viewBox="0 0 460 230" role="img" aria-label="Avion et armement">
+  zone.innerHTML = `<svg viewBox="0 0 460 232" role="img" aria-label="Avion vu de face et armement">
+    <defs><pattern id="quadrillage" width="23" height="23" patternUnits="userSpaceOnUse">
+      <path class="grille" d="M23 0 H0 V23"/></pattern></defs>
+    <rect class="papier" x="0" y="0" width="460" height="232" rx="8"/>
+    <rect x="0" y="0" width="460" height="232" rx="8" fill="url(#quadrillage)"/>
     ${hornetDeFace(toutes)}${stations}</svg>`;
   zone.querySelectorAll("g.st").forEach((g) => {
     g.onclick = () => {

@@ -1,5 +1,5 @@
-**Version 0.19.1** — écran ARMES redessiné
+**Version 0.19.2** — écran ARMES façon plan d'atelier
 
-- Le Hornet est dessiné de face (nez, entrées d'air, verrière, dérives inclinées, pylônes) avec les charges à leur vraie place sous l'aile.
-- Chaque arme a sa silhouette : Sidewinder, AMRAAM, Sparrow, JDAM avec son kit de queue, bombe laser avec sa tête chercheuse, Maverick, HARM, Harpoon, JSOW, bidon, pod.
-- Rappel 0.19.0 : toucher une arme pour la choisir, plusieurs identiques à la fois, état prête / en attente.
+- Dessin au trait sur fond bleu quadrillé : le Hornet vu de face (verrière, nez, entrées d'air, dérives, pylônes) et chaque arme avec sa silhouette.
+- Vue de face : la station 9 est à gauche de l'image, la station 1 à droite, comme sur ton guide de référence.
+- Charges visibles sous l'avion, à leur vraie place, reliées à leur case.
