@@ -353,16 +353,97 @@ function etatArme(a) {
   if (e) return "attente";
   return "inconnu";
 }
+// Silhouettes des armes, nez en haut, dessinees dans une boite de 22 x 80.
+// Chaque arme garde ce qui la fait reconnaitre : ailettes, kit de queue, tete chercheuse.
+const m2 = (d) => `<path class="ail" d="${d}"/><path class="ail" transform="scale(-1,1)" d="${d}"/>`;
+const PROFILS = {
+  bombe: (k) => `<g transform="translate(0,${78 - 66 * k}) scale(${k})">
+      ${m2("M4 54 L10 64 L10 68 L3 61 Z")}
+      <path class="corps" d="M0 0 C5 6 6.5 14 6.5 24 L6.5 46 L3.5 62 L-3.5 62 L-6.5 46 L-6.5 24 C-6.5 14 -5 6 0 0Z"/>
+      <rect class="jaune" x="-5" y="9" width="10" height="3"/></g>`,
+  jdam: (k) => `<g transform="translate(0,${78 - 68 * k}) scale(${k})">
+      ${m2("M6.5 24 L8.5 27 L8.5 40 L6.5 43 Z")}
+      ${m2("M4.5 52 L10 62 L10 68 L4 62 Z")}
+      <path class="corps" d="M0 0 C5 6 6.5 14 6.5 24 L6.5 46 L5 50 L5 66 L-5 66 L-5 50 L-6.5 46 L-6.5 24 C-6.5 14 -5 6 0 0Z"/>
+      <rect class="kit" x="-5" y="50" width="10" height="16"/>
+      <rect class="jaune" x="-5" y="9" width="10" height="3"/></g>`,
+  laser: (k) => `<g transform="translate(0,${78 - 72 * k}) scale(${k})">
+      ${m2("M2.5 10 L9 17 L9 20 L2.5 17 Z")}
+      ${m2("M4.5 50 L11 64 L11 72 L4 62 Z")}
+      <rect class="kit" x="-2.2" y="0" width="4.4" height="7" rx="2"/>
+      <rect class="ail" x="-4.5" y="2" width="9" height="2.2"/>
+      <path class="kit" d="M-2.5 7 L2.5 7 L4 20 L-4 20 Z"/>
+      <path class="corps" d="M-4 20 C-6.5 24 -6.5 28 -6.5 32 L-6.5 48 L-4 62 L4 62 L6.5 48 L6.5 32 C6.5 28 6.5 24 4 20 Z"/>
+      <rect class="jaune" x="-6" y="27" width="12" height="3"/></g>`,
+  aim9: () => `${m2("M2 9 L7.5 16 L7.5 18 L2 16 Z")}${m2("M2 58 L9.5 66 L9.5 76 L2 74 Z")}
+      <path class="missile" d="M0 0 C1.6 1 2 3 2 6 L2 78 L-2 78 L-2 6 C-2 3 -1.6 1 0 0Z"/>
+      <rect class="verre" x="-2" y="1.5" width="4" height="4" rx="2"/><rect class="brun" x="-2" y="44" width="4" height="2.5"/>`,
+  aim120: () => `${m2("M2.6 32 L8.5 42 L8.5 46 L2.6 44 Z")}${m2("M2.6 62 L8.5 68 L8.5 76 L2.6 74 Z")}
+      <path class="missile" d="M0 0 C2 4 2.6 8 2.6 13 L2.6 78 L-2.6 78 L-2.6 13 C-2.6 8 -2 4 0 0Z"/>
+      <rect class="jaune" x="-2.6" y="20" width="5.2" height="2"/><rect class="brun" x="-2.6" y="50" width="5.2" height="2.5"/>`,
+  aim7: () => `${m2("M3.2 28 L11 40 L11 46 L3.2 44 Z")}${m2("M3.2 62 L9 68 L9 76 L3.2 74 Z")}
+      <path class="missile" d="M0 0 C2.6 4 3.2 9 3.2 15 L3.2 78 L-3.2 78 L-3.2 15 C-3.2 9 -2.6 4 0 0Z"/>
+      <rect class="jaune" x="-3.2" y="22" width="6.4" height="2"/><rect class="brun" x="-3.2" y="52" width="6.4" height="2.5"/>`,
+  maverick: () => `<g transform="translate(0,20)">${m2("M4.5 16 L10.5 44 L10.5 48 L4.5 48 Z")}${m2("M4.5 50 L9 53 L9 57 L4.5 56 Z")}
+      <path class="missile" d="M-4.5 6 L-4.5 58 L4.5 58 L4.5 6 C4.5 2 2.5 0 0 0 C-2.5 0 -4.5 2 -4.5 6Z"/>
+      <path class="verre" d="M-4.5 6 C-4.5 2 -2.5 0 0 0 C2.5 0 4.5 2 4.5 6 Z"/></g>`,
+  harm: () => `${m2("M3 26 L10 34 L10 44 L3 42 Z")}${m2("M3 66 L8 70 L8 77 L3 76 Z")}
+      <path class="missile" d="M0 0 C2.4 5 3 10 3 16 L3 78 L-3 78 L-3 16 C-3 10 -2.4 5 0 0Z"/>
+      <rect class="jaune" x="-3" y="20" width="6" height="2"/><rect class="brun" x="-3" y="54" width="6" height="2.5"/>`,
+  harpoon: () => `${m2("M3.6 34 L10 40 L10 46 L3.6 46 Z")}${m2("M3.6 66 L8.5 69 L8.5 76 L3.6 76 Z")}
+      <path class="missile" d="M-3.6 6 L-3.6 78 L3.6 78 L3.6 6 C3.6 2 2 0 0 0 C-2 0 -3.6 2 -3.6 6Z"/>
+      <rect class="jaune" x="-3.6" y="18" width="7.2" height="2"/><rect class="brun" x="-3.6" y="56" width="7.2" height="2.5"/>`,
+  jsow: () => `<g transform="translate(0,10)">${m2("M5 30 L8 31 L8 46 L5 47 Z")}${m2("M5 58 L9.5 62 L9.5 68 L5 67 Z")}
+      <path class="corps" d="M-3 0 L3 0 L5 8 L5 68 L-5 68 L-5 8 Z"/><rect class="jaune" x="-5" y="14" width="10" height="2.5"/></g>`,
+  bidon: () => `${m2("M4 66 L8.5 70 L8.5 76 L3 74 Z")}
+      <path class="reservoir" d="M0 0 C5 8 7 18 7 30 L7 50 C7 62 4 72 0 79 C-4 72 -7 62 -7 50 L-7 30 C-7 18 -5 8 0 0Z"/>`,
+  pod: () => `<g transform="translate(0,22)"><rect class="ail" x="-2" y="20" width="12" height="5"/>
+      <path class="reservoir" d="M-5 8 L-5 50 C-5 54 -2 56 0 56 C2 56 5 54 5 50 L5 8 Z"/>
+      <circle class="kit" cx="0" cy="6" r="5.5"/><circle class="verre" cx="0" cy="4.5" r="2.6"/></g>`,
+  roquette: () => `<g transform="translate(0,26)"><path class="reservoir" d="M0 0 C4 3 6.5 8 6.5 13 L6.5 50 L-6.5 50 L-6.5 13 C-6.5 8 -4 3 0 0Z"/>
+      <rect class="kit" x="-6.5" y="46" width="13" height="4"/></g>`,
+};
+function profil(a) {
+  const n = (a.nom || "") + " " + (a.court || "");
+  if (a.famille === "jdam") return PROFILS.jdam(/31|J-84|J-109/.test(n) ? 1.12 : /32|J-83/.test(n) ? 1.04 : 0.94);
+  if (a.famille === "laser") return PROFILS.laser(/-10|-24/.test(n) ? 1.08 : /-16/.test(n) ? 1.0 : 0.92);
+  if (a.famille === "bombe") return PROFILS.bombe(/84/.test(n) ? 1.15 : /83/.test(n) ? 1.05 : 0.95);
+  if (a.famille === "aa") return /AIM-9|9[MXL]/.test(n) ? PROFILS.aim9() : /AIM-7|7[MF]/.test(n) ? PROFILS.aim7() : PROFILS.aim120();
+  if (a.famille === "slam" || a.famille === "walleye" || a.famille === "tald") return PROFILS.harpoon();
+  return (PROFILS[a.famille] || PROFILS.bombe)(1);
+}
 function dessinArme(a, x) {
   if (!a.n) return "";
-  const un = (cx) => a.famille === "bidon"
-    ? `<ellipse class="arme" cx="${cx}" cy="128" rx="7" ry="20"/>`
-    : a.famille === "aa"
-      ? `<rect class="arme" x="${cx - 2.5}" y="106" width="5" height="40" rx="2.5"/><path class="arme" d="M${cx - 7} 140h14l-3 6h-8z"/>`
-      : a.famille === "pod"
-        ? `<rect class="arme" x="${cx - 5}" y="112" width="10" height="30" rx="5"/>`
-        : `<rect class="arme" x="${cx - 5}" y="108" width="10" height="34" rx="5"/><path class="arme" d="M${cx - 8} 138h16l-4 8h-8z"/>`;
-  return a.n >= 2 ? un(x - 9) + un(x + 9) : un(x);
+  const un = (cx, k) => `<g transform="translate(${cx},124) scale(${k})">${profil(a)}</g>`;
+  return a.n >= 2 ? un(x - 10, 0.86) + un(x + 10, 0.86) : un(x, 1);
+}
+// Emplacement reel des 9 points d'emport sur l'avion vu de face (x, y du bas du pylone)
+const PYLONES = [[26, 73], [98, 82], [148, 80], [208, 86], [230, 90], [252, 86], [312, 80], [362, 82], [434, 73]];
+function hornetDeFace(sts) {
+  const charges = sts.map((a) => {
+    if (!a.n) return "";
+    const [px, py] = PYLONES[a.st - 1];
+    const r = a.famille === "bidon" ? 6.5 : a.famille === "aa" ? 2.6 : 4;
+    const cls = a.famille === "aa" ? "missile" : a.famille === "bidon" || a.famille === "pod" ? "reservoir" : "corps";
+    const un = (cx) => `<circle class="${cls}" cx="${cx}" cy="${py + r}" r="${r}"/>`;
+    return a.n >= 2 ? un(px - r - 0.6) + un(px + r + 0.6) : un(px);
+  }).join("");
+  const aile = "M206 60 L30 68 L26 70 L30 72.5 L206 70 Z";
+  const derive = "M214 50 L188 6 L194 5 L223 46 Z";
+  const plan = "M206 66 L146 78 L146 80.5 L206 72 Z";
+  const pylones = [[98, 71, 82], [148, 70, 80]].map(([x, y1, y2]) => `<path class="pylone" d="M${x - 2.5} ${y1} L${x + 2.5} ${y1} L${x + 1.5} ${y2} L${x - 1.5} ${y2} Z"/><path class="pylone" d="M${460 - x - 2.5} ${y1} L${460 - x + 2.5} ${y1} L${460 - x + 1.5} ${y2} L${460 - x - 1.5} ${y2} Z"/>`).join("");
+  return `<g class="hornet">
+    <path class="plan" d="${plan}"/><path class="plan" transform="translate(460,0) scale(-1,1)" d="${plan}"/>
+    <path class="derive" d="${derive}"/><path class="derive" transform="translate(460,0) scale(-1,1)" d="${derive}"/>
+    <path class="aile" d="${aile}"/><path class="aile" transform="translate(460,0) scale(-1,1)" d="${aile}"/>
+    <rect class="rail" x="22" y="68.5" width="9" height="4.5" rx="1.5"/><rect class="rail" x="429" y="68.5" width="9" height="4.5" rx="1.5"/>
+    ${pylones}
+    <path class="fuselage" d="M196 60 C200 50 214 44 230 44 C246 44 260 50 264 60 L266 76 C262 86 250 90 244 86 L238 78 L222 78 L216 86 C210 90 198 86 194 76 Z"/>
+    <path class="entree" d="M198 66 C198 62 204 60 212 61 L218 76 C214 85 204 85 199 78 Z"/>
+    <path class="entree" d="M262 66 C262 62 256 60 248 61 L242 76 C246 85 256 85 261 78 Z"/>
+    <circle class="nez" cx="230" cy="64" r="12.5"/><circle class="nez2" cx="230" cy="64" r="5"/>
+    <path class="verriere" d="M219 52 C220 38 226 32 230 32 C234 32 240 38 241 52 C237 48 223 48 219 52 Z"/>
+    ${charges}</g>`;
 }
 function rendreArmes() {
   const ar = etat.armes || { stations: [] };
@@ -377,25 +458,22 @@ function rendreArmes() {
   if (zone.dataset.sig === sig) return;
   zone.dataset.sig = sig;
 
-  const stations = (sts.length ? sts : XS.map((_, i) => ({ st: i + 1, n: 0, famille: "vide" }))).map((a) => {
-    const x = XS[a.st - 1];
+  const toutes = sts.length ? sts : XS.map((_, i) => ({ st: i + 1, n: 0, famille: "vide" }));
+  const stations = toutes.map((a) => {
+    const x = XS[a.st - 1], [px, py] = PYLONES[a.st - 1];
     const cls = ["st", a.famille, a.n ? "" : "vide", selArmes.has(a.st) ? "sel" : ""].join(" ");
     return `<g class="${cls}" data-st="${a.st}">
-      <rect class="fond" x="${x - 23}" y="96" width="46" height="74" rx="6"/>
+      <path class="fil" d="M${px} ${py + (a.n ? 9 : 2)} L${px} 104 L${x} 110 L${x} 116"/>
+      <rect class="fond" x="${x - 23}" y="116" width="46" height="96" rx="6"/>
       ${dessinArme(a, x)}
-      ${a.n ? `<circle class="pt ${etatArme(a)}" cx="${x + 16}" cy="103" r="4"/>` : ""}
-      <text class="num" x="${x - 14}" y="107">${a.st}</text>
-      <text x="${x}" y="182">${esc(a.court || "")}${a.n >= 2 ? " ×" + a.n : ""}</text>
+      ${a.n ? `<circle class="pt ${etatArme(a)}" cx="${x + 16}" cy="123" r="4"/>` : ""}
+      <text class="num" x="${x - 15}" y="127">${a.st}</text>
+      ${a.n >= 2 ? `<text class="nb" x="${x}" y="127">×${a.n}</text>` : ""}
+      <text x="${x}" y="224">${esc((a.court || "").replace(/^(AIM-120)\w$/, "$1"))}</text>
     </g>`;
   }).join("");
-  zone.innerHTML = `<svg viewBox="0 0 460 190" role="img" aria-label="Avion et armement">
-    <path class="cellule" d="M8 84 L200 74 L260 74 L452 84 L452 90 L260 92 L200 92 L8 90 Z"/>
-    <path class="cellule" d="M206 70 L176 14 L186 12 L222 62 Z M254 70 L284 14 L274 12 L238 62 Z"/>
-    <path class="cellule" d="M150 80 L196 68 L196 78 Z M310 80 L264 68 L264 78 Z"/>
-    <ellipse class="cellule" cx="230" cy="76" rx="26" ry="24"/>
-    <ellipse class="cellule" cx="230" cy="62" rx="12" ry="13"/>
-    <rect class="cellule" x="196" y="78" width="16" height="18" rx="4"/><rect class="cellule" x="248" y="78" width="16" height="18" rx="4"/>
-    ${stations}</svg>`;
+  zone.innerHTML = `<svg viewBox="0 0 460 230" role="img" aria-label="Avion et armement">
+    ${hornetDeFace(toutes)}${stations}</svg>`;
   zone.querySelectorAll("g.st").forEach((g) => {
     g.onclick = () => {
       const st = Number(g.dataset.st), a = sts.find((x) => x.st === st);
