@@ -1,7 +1,7 @@
-**Version 0.18.1** — d'après ton vol de 22 h
+**Version 0.19.0** — écran ARMES : la vue de l'avion
 
-- Fusée JDAM : le menu EFUZ est ouvert avec PB3 (merci), INST est cherché puis retenu, et la fusée est réglée avant toute programmation.
-- JDAM en TOO : tu choisis les stations à passer en TOO (aucune = toutes).
-- Défense AUTO : la salve continue pendant tout le tir (6 paillettes), et plus seulement pendant l'éclat du voyant. Une seule annonce : « Paillettes automatiques. »
-- Leurres : largage plus rapide. Touche LEURRES du Stream Deck : les noms OFF / ON / BYPASS correspondent maintenant à l'avion.
-- Pilote auto vers un waypoint : comme dans l'avion, WYPT puis CPL. Cap tapé : le repère de cap se règle beaucoup plus vite.
+- Nouvel onglet ARMES (à la place de JDAM) : l'avion vu de face avec ce qui est réellement chargé sur les 9 stations, deux bombes dessinées quand le pylône en porte deux.
+- Un point de couleur par arme : vert prête, orange en attente, gris état non lu (il se lit quand la page STORES est affichée).
+- Tu touches une arme pour la choisir ; tu peux en toucher plusieurs identiques, ou « TOUTES LES GBU-38 » d'un coup. L'écran montre alors ce que tu peux en faire : pour les JDAM, PP (une cible par station, waypoint ou coordonnées) ou TOO.
+- Sur la tablette, l'onglet ARMES prend plus de place que la carte.
+- Avant de toucher aux JDAM, le copilote repart d'un état connu : saisie effacée, sous-menu fermé, page STORES.

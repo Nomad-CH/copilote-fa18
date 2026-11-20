@@ -69,8 +69,28 @@ def lire_ddi(export, ecran=DDI_G):
             dernier = propre
         elif propre:
             dernier = None
+    stations_etat = {}
+    for n, v in el:
+        m = re.match(r"STA(\d)_(Label_TYPE|Label_AMOUNT|Label_Status|BRU_\d+|Selective_Box\w*|Label_0\d)", n)
+        if not m:
+            continue
+        e = stations_etat.setdefault(int(m.group(1)), {})
+        propre = v.split("children are")[0].replace("\n", "").replace("}", "").strip()
+        quoi = m.group(2)
+        if quoi == "Label_TYPE":
+            e["type"] = propre
+        elif quoi == "Label_AMOUNT":
+            e["nb"] = int(propre) if propre.isdigit() else None
+        elif quoi == "Label_Status":
+            e["etat"] = propre
+        elif quoi.startswith("BRU"):
+            e["double"] = True
+        elif quoi.startswith("Selective"):
+            e["choisie"] = True
+        elif propre and "type" not in e:
+            e["type"] = propre
     return {
-        "ecran": ecran, "texte": txt, "elements": el,
+        "ecran": ecran, "texte": txt, "elements": el, "stations_etat": stations_etat,
         "menu_tac": present("STORES") and present("RDR"),
         "stores": "Master_Arm_Status" in txt,
         "jdam": "ALGN_QUAL" in txt and "Master_Arm_Status" in txt,
@@ -253,6 +273,22 @@ def _fusee_inst(r):
     return False
 
 
+def _etat_initial(r):
+    """Repartir d'un etat connu avant de toucher aux ecrans : saisie UFC effacee,
+    aucun sous-menu ouvert, page STORES affichee."""
+    _appuyer(r, "UFC_CLR")
+    _appuyer(r, "UFC_CLR")
+    d = _ddi(r)
+    if d["efuz_menu"]:
+        _fusee_inst(r)
+    elif d["msn_page"]:
+        try:
+            bouton_ddi(r, "msn_retour", (19,), lambda a, b: not b["msn_page"])
+        except Echec:
+            pass
+    return _page_stores(r)
+
+
 def _preparer(r, mode, type_jdam=None):
     _mode_air_sol(r)
     _choisir_jdam(r, type_jdam)
@@ -311,6 +347,7 @@ def jdam_too(r):
     numero = _hsi(r)["wypt"]
     _designer_waypoint(r)
     # chaque station JDAM en TOO (le mode est propre a chaque station), type par type
+    _etat_initial(r)
     a_bord = list(stations_jdam(r.export))
     voulues = getattr(r.nav, "too_stations", None)
     if voulues:                                         # seulement les stations demandees
@@ -368,6 +405,45 @@ def _dms(valeur, est_lat):
 
 
 ORDRE_LARGAGE = (8, 2, 7, 3)        # ordre de largage des JDAM dans le Hornet
+
+
+FAMILLES = (                      # (morceau du nom DCS, famille, nom court)
+    ("GBU-38", "jdam", "GBU-38"), ("GBU-32", "jdam", "GBU-32"), ("GBU-31", "jdam", "GBU-31"),
+    ("AGM-154", "jsow", "JSOW"), ("GBU-10", "laser", "GBU-10"), ("GBU-12", "laser", "GBU-12"),
+    ("GBU-16", "laser", "GBU-16"), ("GBU-24", "laser", "GBU-24"),
+    ("AGM-65E", "maverick", "MAV E"), ("AGM-65", "maverick", "MAV F"),
+    ("AGM-88", "harm", "HARM"), ("AGM-84D", "harpoon", "HARPOON"), ("AGM-84", "slam", "SLAM"),
+    ("AGM-62", "walleye", "WALLEYE"), ("ADM-141", "tald", "TALD"),
+    ("AIM-120", "aa", "AIM-120"), ("AIM-7", "aa", "AIM-7"), ("AIM-9", "aa", "AIM-9"),
+    ("Mk-8", "bombe", "Mk-8x"), ("Mk_8", "bombe", "Mk-8x"), ("MK-8", "bombe", "Mk-8x"),
+    ("Mk-20", "bombe", "ROCKEYE"), ("CBU", "bombe", "CBU"), ("BDU", "bombe", "BDU"),
+    ("LAU", "roquette", "ROQ."), ("Zuni", "roquette", "ZUNI"), ("Hydra", "roquette", "ROQ."),
+    ("FPU", "bidon", "BIDON"), ("FUEL", "bidon", "BIDON"), ("Fuel", "bidon", "BIDON"),
+    ("FLIR", "pod", "POD"), ("LITENING", "pod", "POD"), ("AN/A", "pod", "POD"), ("AWW", "pod", "POD LIAISON"),
+)
+
+
+# abreviations de la page STORES, quand l'emport ne donne pas le nom complet
+CODES_STORES = {"J-82": ("jdam", "GBU-38"), "J-83": ("jdam", "GBU-32"), "J-84": ("jdam", "GBU-31"),
+                "J-109": ("jdam", "GBU-31"), "9M": ("aa", "AIM-9M"), "9X": ("aa", "AIM-9X"),
+                "9L": ("aa", "AIM-9L"), "AM": ("aa", "AIM-120"), "AB": ("aa", "AIM-120"),
+                "7M": ("aa", "AIM-7"), "7F": ("aa", "AIM-7"), "7MH": ("aa", "AIM-7")}
+
+
+def famille(nom):
+    """(famille, nom court) d'une arme d'apres son nom DCS."""
+    if nom in CODES_STORES:
+        return CODES_STORES[nom]
+    for morceau, fam, court in FAMILLES:
+        if morceau.lower() in (nom or "").lower():
+            if fam == "bombe" and court == "Mk-8x":
+                m = re.search(r"8[234]", nom)
+                court = "Mk-" + m.group(0) if m else "Mk-8x"
+            if fam == "aa":
+                m = re.search(r"AIM-\d+\w?", nom)
+                court = m.group(0) if m else court
+            return fam, court
+    return ("autre", (nom or "?")[:9]) if nom else ("vide", "")
 
 
 def stations_jdam(export):
@@ -551,6 +627,7 @@ def jdam_programmer(r):
         if _point_cible(r, c) is None:
             raise Echec(f"Waypoint {c} absent du plan.")
     _mode_air_sol(r)
+    _etat_initial(r)
     faits, rates = [], []
     groupes = _groupes(r, list(plan))
     if not groupes:

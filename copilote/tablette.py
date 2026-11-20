@@ -263,11 +263,41 @@ class Tablette:
             "a_envoyer": len(nav.a_envoyer()),
             "tacan": self.cfg.get("tacan") or [],
             "tacan_choisi": nav.tacan if t is not None else None,
+            "armes": self._armes(x, vivant),
             "jdam": {"stations": {str(k): v for k, v in stations_jdam(x).items()} if vivant else {},
                      "ordre": list(ORDRE_LARGAGE),
                      "choix": {str(k): (v if isinstance(v, int) else "coord")
                                for k, v in (getattr(nav, "jdam", {}) or {}).items()}},
         }
+
+    def _armes(self, x, vivant):
+        from .armement import famille, lire_ddi
+        """Emport reel, station par station, pour la vue de l'avion. L'etat (STBY, RDY...)
+        n'est connu que lorsque la page STORES est affichee : on garde le dernier vu."""
+        if not vivant:
+            return {"stations": [], "obus": None, "stores_vu": None}
+        try:
+            d = lire_ddi(x)
+        except Exception:
+            d = None
+        if d and d["stores"] and d["stations_etat"]:
+            self._stores_vu = (time.time(), d["stations_etat"])
+        quand, lu = getattr(self, "_stores_vu", (0, {}))
+        emport = x.stations()
+        out = []
+        for st in range(1, 10):
+            nom, n = emport.get(st, ("", 0))
+            e = lu.get(st, {})
+            if not n and e.get("type"):                 # pod ou autre charge vue sur la page STORES
+                nom, n = e["type"], e.get("nb") or 1
+            fam, court = famille(nom) if n else ("vide", "")
+            if not n:
+                e = {}
+            out.append({"st": st, "nom": nom, "n": n, "famille": fam, "court": court,
+                        "type": e.get("type"), "etat": e.get("etat"),
+                        "double": bool(e.get("double")) or n > 1, "choisie": bool(e.get("choisie"))})
+        return {"stations": out, "obus": (x.emport or {}).get("obus"),
+                "stores_vu": round(time.time() - quand) if quand else None}
 
     def _suivre_sols(self):
         """Complete l'altitude des points touches sur la carte de la tablette."""

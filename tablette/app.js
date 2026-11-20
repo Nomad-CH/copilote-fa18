@@ -174,7 +174,8 @@ function esc(t) { return String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp
 $$("#onglets button").forEach((b) => b.onclick = () => {
   $$("#onglets button").forEach((x) => x.classList.toggle("actif", x === b));
   $$(".onglet").forEach((o) => (o.hidden = o.id !== "o-" + b.dataset.onglet));
-  if (b.dataset.onglet === "plan" && carte) setTimeout(() => carte.invalidateSize(), 50);
+  $("main").classList.toggle("armes", b.dataset.onglet === "jdam");
+  if (carte) setTimeout(() => carte.invalidateSize(), 80);
 });
 $$("[data-act]").forEach((b) => b.onclick = () => agir(b.dataset.act));
 $$("[data-mode]").forEach((b) => b.onclick = () => agir("defense", { mode: b.dataset.mode }));
@@ -216,8 +217,8 @@ $("#b-jdam-prog").onclick = () => {
 $("#b-ap-cap").onclick = () => agir("ap_cap", { vers: "actuel" });
 $("#b-ap-wpt").onclick = () => agir("ap_cap", { vers: "wpt", num: $("#ap-wpt").value });
 $("#b-ap-deg").onclick = () => agir("ap_cap", { vers: "cap", cap: $("#ap-deg").value });
-const tooStations = new Set();
-$("#b-jdam-too").onclick = () => agir("jdam_too", { num: $("#jdam-too-wpt").value, stations: Array.from(tooStations) });
+$("#b-jdam-too").onclick = () => agir("jdam_too", { num: $("#jdam-too-wpt").value, stations: Array.from(selArmes) });
+$$("#jdam-mode button").forEach((b) => (b.onclick = () => { jdamMode = b.dataset.m; $("#avion-armes").dataset.sig = ""; rendreArmes(); }));
 
 // ---------------------------------------------- saisie de coordonnees
 // Comme sur les ecrans du Hornet : N 31°43'08"  E 064°48'27". On ne tape que des
@@ -307,7 +308,7 @@ function rendre() {
   }
   $("#version").textContent = e.version ? "Copilote version " + e.version : "";
   $("#b-envoyer").textContent = e.a_envoyer ? `ENVOYER À L'AVION (${e.a_envoyer})` : "ENVOYER À L'AVION";
-  rendrePlan(); rendreJdam(); rendreTacan(); rendreAvion(); rendreJournal();
+  rendrePlan(); rendreArmes(); rendreTacan(); rendreAvion(); rendreJournal();
   dessinerCarte();
 }
 
@@ -338,45 +339,136 @@ function optionsWpt(valeur) {
     .map((p) => `<option value="${p.num}" ${String(valeur) === String(p.num) ? "selected" : ""}>${p.num} ${esc(p.nom)}</option>`).join("");
 }
 
-function rendreJdam() {
-  const j = etat.jdam, div = $("#jdam-stations");
-  const stations = j.ordre.filter((s) => j.stations[s]);
-  const liste = stations.length ? stations : j.ordre;
-  const sig = JSON.stringify([liste, j.stations, etat.plan.map((p) => [p.num, p.nom])]);
-  if (div.dataset.sig !== sig) {
-    const avant = {};
-    $$("#jdam-stations select").forEach((s) => (avant[s.dataset.st] = s.value));
-    div.dataset.sig = sig;
-    div.innerHTML = "";
-    liste.forEach((st) => {
-      const ligne = document.createElement("div");
-      ligne.className = "station";
-      const nom = (j.stations[st] || "JDAM").replace("(V)1/B", "").replace("(V)2/B", "");
-      const val = avant[st] ?? j.choix[st] ?? "";
-      ligne.innerHTML = `<span class="lib">STA ${st}<br><small>${esc(nom)}</small></span>
-        <select data-st="${st}">${optionsWpt(val)}<option value="coord" ${val === "coord" ? "selected" : ""}>Coordonnées…</option></select>
-        <div class="coord" ${val === "coord" ? "" : "hidden"}></div>`;
-      const zone = ligne.querySelector(".coord"), sel = ligne.querySelector("select");
-      monterCoord(zone, jdamCoord[st]);
-      zone.onchange = () => (jdamCoord[st] = valeursCoord(zone));
-      sel.onchange = () => (zone.hidden = sel.value !== "coord");
-      div.appendChild(ligne);
-    });
-    if (!stations.length) div.insertAdjacentHTML("beforeend", '<div class="aide">Pas de JDAM vues à bord (stations par défaut).</div>');
-    const puces = $("#too-stations");
-    puces.innerHTML = "";
-    liste.forEach((st) => {
-      const b = document.createElement("button");
-      b.textContent = "STA " + st;
-      b.className = tooStations.has(st) ? "actif" : "";
-      b.onclick = () => { tooStations.has(st) ? tooStations.delete(st) : tooStations.add(st); b.classList.toggle("actif"); };
-      puces.appendChild(b);
-    });
-    const too = $("#jdam-too-wpt"), v = too.value;
-    too.innerHTML = optionsWpt(v || choisi || "");
-    const ap = $("#ap-wpt"), va = ap.value;
-    if (document.activeElement !== ap) ap.innerHTML = optionsWpt(va || "");
+// ------------------------------------------------------------- ARMES
+// Vue de l'avion (aile gauche a gauche, comme sur la page STORES). On touche une
+// arme pour la choisir ; plusieurs armes identiques peuvent etre choisies ensemble.
+const selArmes = new Set();
+let jdamMode = "PP";
+const XS = [26, 77, 128, 179, 230, 281, 332, 383, 434];      // stations 1 a 9
+
+function nomArme(a) { return (a.nom || "").replace(/\(V\)\d\/B/, ""); }
+function etatArme(a) {
+  const e = (a.etat || "").toUpperCase();
+  if (e.startsWith("RDY")) return "pret";
+  if (e) return "attente";
+  return "inconnu";
+}
+function dessinArme(a, x) {
+  if (!a.n) return "";
+  const un = (cx) => a.famille === "bidon"
+    ? `<ellipse class="arme" cx="${cx}" cy="128" rx="7" ry="20"/>`
+    : a.famille === "aa"
+      ? `<rect class="arme" x="${cx - 2.5}" y="106" width="5" height="40" rx="2.5"/><path class="arme" d="M${cx - 7} 140h14l-3 6h-8z"/>`
+      : a.famille === "pod"
+        ? `<rect class="arme" x="${cx - 5}" y="112" width="10" height="30" rx="5"/>`
+        : `<rect class="arme" x="${cx - 5}" y="108" width="10" height="34" rx="5"/><path class="arme" d="M${cx - 8} 138h16l-4 8h-8z"/>`;
+  return a.n >= 2 ? un(x - 9) + un(x + 9) : un(x);
+}
+function rendreArmes() {
+  const ar = etat.armes || { stations: [] };
+  const sts = ar.stations;
+  // une arme larguee ou changee sort de la selection
+  const noms = new Set(Array.from(selArmes).map((st) => nomArme(sts.find((a) => a.st === st) || {})));
+  Array.from(selArmes).forEach((st) => { const a = sts.find((x) => x.st === st); if (!a || !a.n) selArmes.delete(st); });
+  if (noms.size > 1) selArmes.clear();
+  const choisies = sts.filter((a) => selArmes.has(a.st));
+  const sig = JSON.stringify([sts, Array.from(selArmes), jdamMode, etat.plan.map((p) => [p.num, p.nom])]);
+  const zone = $("#avion-armes");
+  if (zone.dataset.sig === sig) return;
+  zone.dataset.sig = sig;
+
+  const stations = (sts.length ? sts : XS.map((_, i) => ({ st: i + 1, n: 0, famille: "vide" }))).map((a) => {
+    const x = XS[a.st - 1];
+    const cls = ["st", a.famille, a.n ? "" : "vide", selArmes.has(a.st) ? "sel" : ""].join(" ");
+    return `<g class="${cls}" data-st="${a.st}">
+      <rect class="fond" x="${x - 23}" y="96" width="46" height="74" rx="6"/>
+      ${dessinArme(a, x)}
+      ${a.n ? `<circle class="pt ${etatArme(a)}" cx="${x + 16}" cy="103" r="4"/>` : ""}
+      <text class="num" x="${x - 14}" y="107">${a.st}</text>
+      <text x="${x}" y="182">${esc(a.court || "")}${a.n >= 2 ? " ×" + a.n : ""}</text>
+    </g>`;
+  }).join("");
+  zone.innerHTML = `<svg viewBox="0 0 460 190" role="img" aria-label="Avion et armement">
+    <path class="cellule" d="M8 84 L200 74 L260 74 L452 84 L452 90 L260 92 L200 92 L8 90 Z"/>
+    <path class="cellule" d="M206 70 L176 14 L186 12 L222 62 Z M254 70 L284 14 L274 12 L238 62 Z"/>
+    <path class="cellule" d="M150 80 L196 68 L196 78 Z M310 80 L264 68 L264 78 Z"/>
+    <ellipse class="cellule" cx="230" cy="76" rx="26" ry="24"/>
+    <ellipse class="cellule" cx="230" cy="62" rx="12" ry="13"/>
+    <rect class="cellule" x="196" y="78" width="16" height="18" rx="4"/><rect class="cellule" x="248" y="78" width="16" height="18" rx="4"/>
+    ${stations}</svg>`;
+  zone.querySelectorAll("g.st").forEach((g) => {
+    g.onclick = () => {
+      const st = Number(g.dataset.st), a = sts.find((x) => x.st === st);
+      if (!a || !a.n) return;
+      const deja = sts.find((x) => selArmes.has(x.st));
+      if (deja && nomArme(deja) !== nomArme(a)) selArmes.clear();      // un seul type a la fois
+      selArmes.has(st) ? selArmes.delete(st) : selArmes.add(st);
+      rendreArmes();
+    };
+  });
+  $("#armes-vu").textContent = ar.stores_vu === null || ar.stores_vu === undefined
+    ? "· affiche la page STORES pour lire l'état" : ar.stores_vu > 20 ? `· état lu il y a ${ar.stores_vu} s` : "";
+
+  // raccourcis : toutes les armes identiques d'un coup
+  const rac = $("#armes-raccourcis");
+  rac.innerHTML = "";
+  const groupes = {};
+  sts.filter((a) => a.n && !["bidon", "pod", "vide"].includes(a.famille)).forEach((a) => (groupes[nomArme(a)] = (groupes[nomArme(a)] || []).concat(a)));
+  Object.entries(groupes).forEach(([nom, liste]) => {
+    if (liste.length < 2) return;
+    const b = document.createElement("button");
+    b.textContent = `TOUTES LES ${liste[0].court}`;
+    b.onclick = () => { selArmes.clear(); liste.forEach((a) => selArmes.add(a.st)); rendreArmes(); };
+    rac.appendChild(b);
+  });
+  rac.hidden = !rac.children.length;
+
+  // ce qu'on peut faire avec la selection
+  const titre = $("#armes-titre"), pj = $("#p-jdam"), pa = $("#p-autre");
+  titre.classList.toggle("choix", choisies.length > 0);
+  if (!choisies.length) {
+    titre.textContent = "Touche une arme sur l'avion. Tu peux en toucher plusieurs du même type.";
+    pj.hidden = pa.hidden = true;
+  } else {
+    const total = choisies.reduce((n, a) => n + a.n, 0), fam = choisies[0].famille;
+    titre.textContent = `${total} × ${choisies[0].court} · station${choisies.length > 1 ? "s" : ""} ${choisies.map((a) => a.st).join(", ")}`;
+    pj.hidden = fam !== "jdam";
+    pa.hidden = fam === "jdam";
+    pa.textContent = {
+      aa: "Missiles air-air : sélection et annonces de tir à venir.",
+      laser: "Bombes laser : code laser et pod de ciblage à venir (prochaine étape de la feuille de route).",
+      maverick: "Maverick : à venir.", harm: "HARM : à venir.", jsow: "JSOW : à venir, comme les JDAM.",
+      bombe: "Bombes lisses : mode CCIP / AUTO, quantité, intervalle à venir.",
+      bidon: "Bidon : pas de réglage.", pod: "Pod : à venir avec les armes laser.",
+    }[fam] || "Réglages de cette arme : à venir.";
   }
+  if (!pj.hidden) rendreJdam(choisies);
+  const ap = $("#ap-wpt"), va = ap.value;
+  if (document.activeElement !== ap) ap.innerHTML = optionsWpt(va || "");
+}
+
+function rendreJdam(choisies) {
+  $$("#jdam-mode button").forEach((b) => b.classList.toggle("actif", b.dataset.m === jdamMode));
+  $("#jdam-pp").hidden = jdamMode !== "PP";
+  $("#jdam-too").hidden = jdamMode !== "TOO";
+  const div = $("#jdam-stations"), avant = {};
+  $$("#jdam-stations select").forEach((s) => (avant[s.dataset.st] = s.value));
+  div.innerHTML = "";
+  choisies.forEach((a) => {
+    const st = a.st, ligne = document.createElement("div");
+    ligne.className = "station";
+    const val = avant[st] ?? etat.jdam.choix[st] ?? "";
+    ligne.innerHTML = `<span class="lib">STA ${st}<br><small>${esc(a.court)}${a.n >= 2 ? " ×" + a.n : ""}</small></span>
+      <select data-st="${st}">${optionsWpt(val)}<option value="coord" ${val === "coord" ? "selected" : ""}>Coordonnées…</option></select>
+      <div class="coord" ${val === "coord" ? "" : "hidden"}></div>`;
+    const zone = ligne.querySelector(".coord"), sel = ligne.querySelector("select");
+    monterCoord(zone, jdamCoord[st]);
+    zone.onchange = () => (jdamCoord[st] = valeursCoord(zone));
+    sel.onchange = () => (zone.hidden = sel.value !== "coord");
+    div.appendChild(ligne);
+  });
+  const too = $("#jdam-too-wpt"), v = too.value;
+  too.innerHTML = optionsWpt(v || choisi || "");
 }
 
 function rendreTacan() {

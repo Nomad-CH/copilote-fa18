@@ -168,3 +168,28 @@ details.saisie .rangee { margin-top: 8px; }
 .puces { display: flex; gap: 8px; flex-wrap: wrap; }
 .puces button { flex: 1; min-width: 64px; }
 .puces button.actif { background: var(--ambre); color: var(--encre); border-color: var(--ambre); font-weight: bold; }
+
+/* ARMES : vue de l'avion */
+#avion-armes svg { width: 100%; height: auto; display: block; touch-action: manipulation; }
+#avion-armes .cellule { fill: #16211A; stroke: var(--ligne); stroke-width: 1.5; }
+#avion-armes .st rect.fond { fill: transparent; stroke: var(--ligne); stroke-width: 1.2; rx: 6; }
+#avion-armes .st.vide rect.fond { stroke-dasharray: 3 4; stroke: var(--gris); }
+#avion-armes .st.sel rect.fond { fill: #10261A; stroke: var(--vert); stroke-width: 2.6; }
+#avion-armes .st .arme { fill: var(--pale); }
+#avion-armes .st.jdam .arme, #avion-armes .st.laser .arme, #avion-armes .st.bombe .arme { fill: var(--ambre); }
+#avion-armes .st.bidon .arme, #avion-armes .st.pod .arme { fill: var(--gris); }
+#avion-armes .st text { font-family: inherit; fill: var(--pale); font-size: 9.5px; text-anchor: middle; }
+#avion-armes .st text.num { fill: var(--gris); font-size: 9px; }
+#avion-armes .st.sel text { fill: var(--vert); font-weight: bold; }
+#avion-armes .pt.pret, .legende .pt.pret { fill: var(--vert); background: var(--vert); }
+#avion-armes .pt.attente, .legende .pt.attente { fill: var(--ambre); background: var(--ambre); }
+#avion-armes .pt.inconnu, .legende .pt.inconnu { fill: var(--gris); background: var(--gris); }
+.legende { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gris); flex-wrap: wrap; margin: 4px 0 8px; }
+.legende .pt { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-left: 8px; }
+.segment.large { display: flex; margin: 8px 0; }
+.segment.large button { flex: 1; min-width: 0; font-size: 13px; padding: 0 6px; }
+#armes-titre.choix { color: var(--vert); font-size: 16px; font-weight: bold; }
+/* tablette : l'onglet ARMES prend plus de place que la carte */
+@media (min-width: 821px) {
+  main.armes #panneau { flex: 1.6; max-width: 62vw; }
+}

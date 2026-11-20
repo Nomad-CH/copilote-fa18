@@ -48,7 +48,7 @@
     <aside id="panneau">
       <nav id="onglets">
         <button data-onglet="plan" class="actif">PLAN</button>
-        <button data-onglet="jdam">JDAM</button>
+        <button data-onglet="jdam">ARMES</button>
         <button data-onglet="tacan">TACAN</button>
         <button data-onglet="avion">AVION</button>
         <button data-onglet="journal">JOURNAL</button>
@@ -80,18 +80,31 @@
         <div class="rangee"><button id="b-nouveau" class="discret">NOUVEAU PLAN</button></div>
       </div>
 
-      <!-- JDAM -->
+      <!-- ARMES : vue de l'avion, on touche une arme pour voir ce qu'on peut en faire -->
       <div class="onglet" id="o-jdam" hidden>
-        <div class="aide">Pour chaque station : un waypoint du plan, ou « Coordonnées » pour les taper directement dans la bombe (mode PP).</div>
-        <div id="jdam-stations"></div>
-        <div class="rangee"><button id="b-jdam-prog" class="principal">PROGRAMMER LES JDAM</button></div>
-        <div class="separateur">ou, en TOO : le waypoint devient la cible</div>
-        <div class="aide">Touche les stations à passer en TOO (aucune = toutes).</div>
-        <div id="too-stations" class="puces"></div>
-        <div class="rangee">
-          <select id="jdam-too-wpt"></select>
-          <button id="b-jdam-too">TOO SUR CE WAYPOINT</button>
+        <div id="avion-armes"></div>
+        <div class="legende"><span class="pt pret"></span>prête <span class="pt attente"></span>en attente <span class="pt inconnu"></span>état non lu <span id="armes-vu"></span></div>
+        <div id="armes-titre" class="aide">Touche une arme sur l'avion. Tu peux en toucher plusieurs du même type.</div>
+        <div class="rangee" id="armes-raccourcis"></div>
+
+        <div id="p-jdam" hidden>
+          <div class="segment large" id="jdam-mode">
+            <button data-m="PP" class="actif">PP · une cible par bombe</button>
+            <button data-m="TOO">TOO · le waypoint désigné</button>
+          </div>
+          <div id="jdam-pp">
+            <div id="jdam-stations"></div>
+            <div class="rangee"><button id="b-jdam-prog" class="principal">PROGRAMMER</button></div>
+          </div>
+          <div id="jdam-too" hidden>
+            <div class="rangee">
+              <select id="jdam-too-wpt"></select>
+              <button id="b-jdam-too" class="principal">TOO SUR CE WAYPOINT</button>
+            </div>
+          </div>
+          <div class="aide">Le copilote met la fusée sur INST et vérifie les coordonnées relues dans la bombe.</div>
         </div>
+        <div id="p-autre" class="aide" hidden></div>
       </div>
 
       <!-- TACAN -->
