@@ -225,17 +225,24 @@ $("#b-jdam-prog").onclick = () => {
   const plan = {};
   let faux = null;
   $$("#jdam-stations select").forEach((s) => {
+    const st = s.dataset.st, i = Number(s.dataset.b) - 1;
+    plan[st] = plan[st] || [null, null];
     if (s.value === "") return;
-    if (s.value !== "coord") { plan[s.dataset.st] = s.value; return; }
+    if (s.value !== "coord") { plan[st][i] = s.value; return; }
     const c = lireCoord(s.parentElement.querySelector(".coord"));
-    if (!c) faux = s.dataset.st; else plan[s.dataset.st] = { lat: c[0], lon: c[1] };
+    if (!c) faux = st; else plan[st][i] = { lat: c[0], lon: c[1] };
   });
   if (faux) { toast(`Station ${faux} : coordonnées incomplètes.`); return; }
+  for (const st of Object.keys(plan)) {
+    if (plan[st][0] === null && plan[st][1] !== null) { toast(`Station ${st} : donne d'abord la cible de la bombe 1.`); return; }
+    if (plan[st][0] === null) delete plan[st];
+  }
   agir("jdam_programmer", { plan });
 };
 $("#b-ap-cap").onclick = () => agir("ap_cap", { vers: "actuel" });
 $("#b-ap-wpt").onclick = () => agir("ap_cap", { vers: "wpt", num: $("#ap-wpt").value });
 $("#b-ap-deg").onclick = () => agir("ap_cap", { vers: "cap", cap: $("#ap-deg").value });
+$("#b-jdam-cible2").onclick = () => agir("jdam_cible2");
 $("#b-jettison").onclick = () => {
   const b = $("#b-jettison");
   if (!jettisonPret) {
@@ -730,21 +737,28 @@ function rendreJdam(choisies) {
   $("#jdam-pp").hidden = jdamMode !== "PP";
   $("#jdam-too").hidden = jdamMode !== "TOO";
   const div = $("#jdam-stations"), avant = {};
-  $$("#jdam-stations select").forEach((s) => (avant[s.dataset.st] = s.value));
+  $$("#jdam-stations select").forEach((s) => (avant[`${s.dataset.st}-${s.dataset.b}`] = s.value));
   div.innerHTML = "";
+  // une ligne par bombe : un pylone double a deux cibles (PP1 puis PP2)
   choisies.forEach((a) => {
-    const st = a.st, ligne = document.createElement("div");
-    ligne.className = "station";
-    const val = avant[st] ?? etat.jdam.choix[st] ?? "";
-    ligne.innerHTML = `<span class="lib">STA ${st}<br><small>${esc(a.court)}${a.n >= 2 ? " ×" + a.n : ""}</small></span>
-      <select data-st="${st}">${optionsWpt(val)}<option value="coord" ${val === "coord" ? "selected" : ""}>Coordonnées…</option></select>
-      <div class="coord" ${val === "coord" ? "" : "hidden"}></div>`;
-    const zone = ligne.querySelector(".coord"), sel = ligne.querySelector("select");
-    monterCoord(zone, jdamCoord[st]);
-    zone.onchange = () => (jdamCoord[st] = valeursCoord(zone));
-    sel.onchange = () => (zone.hidden = sel.value !== "coord");
-    div.appendChild(ligne);
+    for (let bombe = 1; bombe <= Math.min(2, a.n); bombe++) {
+      const st = a.st, cle = `${st}-${bombe}`, ligne = document.createElement("div");
+      ligne.className = "station";
+      const connu = etat.jdam.choix[st];
+      const val = avant[cle] ?? (Array.isArray(connu) ? connu[bombe - 1] : bombe === 1 ? connu : "") ?? "";
+      ligne.innerHTML = `<span class="lib">STA ${st}${a.n >= 2 ? ` · bombe ${bombe}` : ""}<br><small>${esc(a.court)}${a.n >= 2 ? ` · PP${bombe}` : ""}</small></span>
+        <select data-st="${st}" data-b="${bombe}">${optionsWpt(val)}<option value="coord" ${val === "coord" ? "selected" : ""}>Coordonnées…</option></select>
+        <div class="coord" ${val === "coord" ? "" : "hidden"}></div>`;
+      const zone = ligne.querySelector(".coord"), sel = ligne.querySelector("select");
+      monterCoord(zone, jdamCoord[cle]);
+      zone.onchange = () => (jdamCoord[cle] = valeursCoord(zone));
+      sel.onchange = () => (zone.hidden = sel.value !== "coord");
+      div.appendChild(ligne);
+    }
   });
+  const att = etat.jdam.attente2 || [];
+  $("#jdam-cible2").hidden = !att.length;
+  $("#b-jdam-cible2").textContent = `PASSER SUR LA 2e CIBLE (station${att.length > 1 ? "s" : ""} ${att.join(", ")})`;
   const too = $("#jdam-too-wpt"), v = too.value;
   too.innerHTML = optionsWpt(v || choisi || "");
 }

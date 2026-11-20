@@ -277,8 +277,11 @@ class Tablette:
             "guide": self._guide(),
             "jdam": {"stations": {str(k): v for k, v in stations_jdam(x).items()} if vivant else {},
                      "ordre": list(ORDRE_LARGAGE),
-                     "choix": {str(k): (v if isinstance(v, int) else "coord")
-                               for k, v in (getattr(nav, "jdam", {}) or {}).items()}},
+                     "choix": {str(k): [(c if isinstance(c, int) else "coord")
+                                        for c in (v if isinstance(v, list) else [v])]
+                               for k, v in (getattr(nav, "jdam", {}) or {}).items()},
+                     "attente2": sorted(set(getattr(nav, "jdam_doubles", {}) or {})
+                                        | set(getattr(nav, "jdam_a_basculer", []) or []))},
         }
 
     def _guide(self):
@@ -440,6 +443,10 @@ class Tablette:
         if quoi == "aller":
             nav.cible = int(d["num"])
             return proc("aller_wpt")
+        if quoi == "jdam_cible2":
+            nav.jdam_a_basculer = sorted(set(nav.jdam_a_basculer) | set(nav.jdam_doubles))
+            nav.jdam_doubles = {}
+            return proc("jdam_cible2")
         if quoi == "jettison":
             stations = [int(v) for v in (d.get("stations") or [])]
             if not stations:
@@ -495,16 +502,20 @@ class Tablette:
         # --- JDAM
         if quoi == "jdam_programmer":
             plan = {}
-            for st, n in (d.get("plan") or {}).items():
-                if n in (None, ""):
-                    continue
-                if isinstance(n, dict):                     # coordonnees tapees pour cette station
-                    lat, lon = float(n["lat"]), float(n["lon"])
-                    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-                        return {"ok": False, "message": f"Station {st} : coordonnées hors limites."}
-                    plan[int(st)] = Point("coordonnées", lat, lon, None, "tablette")
-                else:
-                    plan[int(st)] = int(n)
+            for st, valeur in (d.get("plan") or {}).items():
+                cibles = []
+                for n in (valeur if isinstance(valeur, list) else [valeur])[:2]:
+                    if n in (None, ""):
+                        continue
+                    if isinstance(n, dict):                 # coordonnees tapees pour cette bombe
+                        lat, lon = float(n["lat"]), float(n["lon"])
+                        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                            return {"ok": False, "message": f"Station {st} : coordonnées hors limites."}
+                        cibles.append(Point("coordonnées", lat, lon, None, "tablette"))
+                    else:
+                        cibles.append(int(n))
+                if cibles:
+                    plan[int(st)] = cibles if len(cibles) > 1 else cibles[0]
             if not plan:
                 return {"ok": False, "message": "Choisis une cible pour au moins une station."}
             nav.jdam = plan

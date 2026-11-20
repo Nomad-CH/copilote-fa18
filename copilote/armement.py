@@ -559,10 +559,16 @@ def _cible_ok(r, p):
             and abs(d["tgt_lat"] - p.lat) < 0.0003 and abs(d["tgt_lon"] - p.lon) < 0.0003)
 
 
-def _entrer_cible(r, p):
+def _choisir_pp(r, numero):
+    """Mission PP1 a PP6 de la station affichee : boutons PB6 a PB11 de la page MSN."""
+    nom = f"PP{numero}"
+    if nom not in _ddi(r)["mission"]:
+        bouton_ddi(r, nom.lower(), (5 + numero,), lambda a, b: nom in b["mission"])
+
+
+def _entrer_cible(r, p, numero=1):
     _mode_station(r, "PP")
-    if "PP1" not in _ddi(r)["mission"]:
-        bouton_ddi(r, "pp1", (6,), lambda a, b: "PP1" in b["mission"])
+    _choisir_pp(r, numero)
     trace = []
     ok = False
     for lent in (False, True):                          # 2e essai plus lent si la relecture est fausse
@@ -587,7 +593,7 @@ def _entrer_cible(r, p):
     r.attendre(0.8)
     d = _ddi(r)
     if getattr(r, "boite", None) is not None:
-        r.boite.ecrire("jdam_cible", station=d["station"], point=p.dict(),
+        r.boite.ecrire("jdam_cible", station=d["station"], mission=d["mission"], point=p.dict(),
                        relu=(d["tgt_lat"], d["tgt_lon"]), ok=ok, trace=trace, msn=d["texte"][:20000])
     return ok
 
@@ -616,20 +622,28 @@ def _altitude_sol(r, p):
         r.attendre(0.2)
 
 
+def _cibles(r, valeur):
+    """Les cibles d'une station : une seule, ou deux pour un pylone qui porte deux bombes."""
+    liste = valeur if isinstance(valeur, (list, tuple)) else [valeur]
+    return [_point_cible(r, c) for c in liste if c is not None][:2]
+
+
 def jdam_programmer(r):
     """Programme chaque station JDAM en PP : sur un waypoint du plan, ou sur des
-    coordonnees donnees directement (r.nav.jdam = {station: numero ou Point})."""
+    coordonnees donnees directement. r.nav.jdam = {station: cible} ou, pour un pylone
+    double, {station: [cible 1, cible 2]} : PP1 pour la premiere bombe, PP2 pour la seconde."""
     plan = dict(getattr(r.nav, "jdam", {}) or {})
     a_bord = stations_jdam(r.export)
     plan = {st: c for st, c in plan.items() if c is not None and (not a_bord or st in a_bord)}
+    plan = {st: c for st, c in plan.items() if _cibles(r, c)}
     if not plan:
         raise Echec("Choisis une cible pour au moins une station qui porte une JDAM.")
     for st, c in plan.items():
-        if _point_cible(r, c) is None:
-            raise Echec(f"Waypoint {c} absent du plan.")
+        if any(p is None for p in _cibles(r, c)):
+            raise Echec(f"Station {st} : waypoint absent du plan.")
     _mode_air_sol(r)
     _etat_initial(r)
-    faits, rates = [], []
+    faits, rates, doubles = {}, [], {}
     groupes = _groupes(r, list(plan))
     if not groupes:
         raise Echec("Aucune de ces stations n'a de JDAM.")
@@ -639,9 +653,20 @@ def jdam_programmer(r):
             _page_msn(r)
             for st in liste:
                 _station_msn(r, st)
-                p = _point_cible(r, plan[st])
-                _altitude_sol(r, p)
-                (faits if _entrer_cible(r, p) else rates).append(st)
+                cibles = _cibles(r, plan[st])
+                bons = []
+                for i, p in enumerate(cibles):
+                    _altitude_sol(r, p)
+                    if _entrer_cible(r, p, i + 1):
+                        bons.append(p)
+                if len(cibles) > 1:
+                    _choisir_pp(r, 1)                    # la premiere bombe part sur PP1
+                if len(bons) == len(cibles):
+                    faits[st] = bons
+                    if len(bons) > 1:
+                        doubles[st] = True
+                else:
+                    rates.append(st)
             bouton_ddi(r, "msn_retour", (19,), lambda a, b: not b["msn_page"])
         except Echec as ex:
             rates.extend(st for st in liste if st not in faits and st not in rates)
@@ -651,13 +676,54 @@ def jdam_programmer(r):
             _choisir_jdam(r, groupes[0][0])
         except Echec:
             pass
+    r.nav.jdam_doubles = doubles                         # stations ou PP2 attend la 2e bombe
     if rates:
         r.non_confirmes.append("stations " + ", ".join(map(str, rates)))
-    textes = [f"station {st} sur {_point_cible(r, plan[st]).nom}" for st in faits]
+    textes = [f"station {st} sur " + " puis ".join(p.nom for p in pts) for st, pts in faits.items()]
     if textes:
-        r.dire("JDAM programmées : " + ", ".join(textes) + ". Master arm et largage à toi.")
+        r.dire("JDAM programmées : " + ", ".join(textes) + ". Master arm et largage à toi."
+               + (" Après le premier largage, je passerai les pylônes doubles sur leur deuxième cible."
+                  if doubles else ""))
     else:
         r.dire("Programmation JDAM non confirmée.")
+
+
+def jdam_deuxieme_cible(r):
+    """Apres le largage de la premiere bombe d'un pylone double : la station passe sur PP2.
+    On note d'abord ce que l'avion affiche (au cas ou il le ferait de lui-meme), puis on
+    remet la station qui etait choisie, pour ne pas changer l'ordre de tir du pilote."""
+    stations = [st for st in (getattr(r.nav, "jdam_a_basculer", None) or [])]
+    r.nav.jdam_a_basculer = []
+    a_bord = stations_jdam(r.export)
+    stations = [st for st in stations if not a_bord or st in a_bord]
+    if not stations:
+        return
+    _etat_initial(r)
+    faites = []
+    for type_jdam, liste in _groupes(r, stations):
+        try:
+            _choisir_jdam(r, type_jdam)
+            d = _page_msn(r)
+            depart = d["station"]
+            for st in liste:
+                d = _station_msn(r, st)
+                if getattr(r, "boite", None) is not None:
+                    r.boite.ecrire("jdam_apres_largage", station=st, mission=d["mission"],
+                                   cible=(d["tgt_lat"], d["tgt_lon"]), msn=d["texte"][:20000])
+                if d["mission"].startswith("PP"):
+                    _choisir_pp(r, 2)
+                    faites.append(st)
+            if depart and depart not in liste:
+                try:
+                    _station_msn(r, depart)
+                except Echec:
+                    pass
+            bouton_ddi(r, "msn_retour", (19,), lambda a, b: not b["msn_page"])
+        except Echec as ex:
+            r.non_confirmes.append(f"deuxième cible {type_jdam or ''} : {ex}")
+    if faites:
+        r.dire("Deuxième cible sélectionnée, station" + ("s " if len(faites) > 1 else " ")
+               + ", ".join(map(str, faites)) + ".")
 
 
 def _proc(fonction, quoi):
@@ -676,5 +742,6 @@ def _proc(fonction, quoi):
 
 PROCEDURES_ARMES = {
     "jdam_too": ("JDAM sur waypoint", _proc(jdam_too, "JDAM TOO")),
+    "jdam_cible2": ("JDAM, deuxième cible des pylônes doubles", _proc(jdam_deuxieme_cible, "JDAM deuxième cible")),
     "jdam_programmer": ("Programmation JDAM", _proc(jdam_programmer, "JDAM stations")),
 }

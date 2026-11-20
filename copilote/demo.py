@@ -306,7 +306,7 @@ class FausseNav:
             with open(_o.path.join(_o.path.dirname(__file__), "..", "tests",
                                    "pages_msn_15nov.json"), encoding="utf-8") as f:
                 self.pages_msn = _j.load(f)
-            self.sta, self.cibles = 8, {}
+            self.sta, self.cibles, self.pps = 8, {}, {}
             self.modes = {8: "TOO", 2: "PP", 7: "PP", 3: "PP"}
         except OSError:
             self.pages = None
@@ -390,7 +390,7 @@ class FausseNav:
                         lat = int(s[-4][1:3]) + int(s[-4][3:5]) / 60 + (int(s[-4][5:7]) + int(s[-3]) / 100) / 3600
                         lo = s[-2][1:]
                         lon = int(lo[:-4]) + int(lo[-4:-2]) / 60 + (int(lo[-2:]) + int(s[-1]) / 100) / 3600
-                        self.cibles[self.sta] = (lat, lon)
+                        self.cibles[(self.sta, self.pps.get(self.sta, 1))] = (lat, lon)
                     except (ValueError, IndexError):
                         pass
                     self.pp_saisies = []
@@ -441,7 +441,7 @@ class FausseNav:
         elif p == "msn" and pb == 5:
             self.modes[self.sta] = "TOO" if self.modes[self.sta] == "PP" else "PP"
         elif p == "msn" and 6 <= pb <= 11 and self.modes[self.sta] == "PP":
-            self.pp = pb - 5
+            self.pps[self.sta] = pb - 5                 # mission PP1 a PP6, propre a chaque station
         elif p == "msn" and pb == 14:
             self.ufc_mode = "TGT"
             self.opts = ["POSN", "", "ELEV", "", ""]
@@ -469,9 +469,12 @@ class FausseNav:
             return self.pages_msn["dsply"] + ("\x1fMSN_1__id:8\nMSN\n" if self._msn_pret() else "")
         if self.ddi == "msn":
             t = self.pages_msn["msn1"].replace("CurrStation_JDAM\n8", "CurrStation_JDAM\n%d" % self.sta)
+            pp = self.pps.get(self.sta, 1)
             if self.modes[self.sta] == "TOO":
                 t = t.replace("MISSION_Type\nPP1", "MISSION_Type\nTOO1").replace("Miss_Type\nPP1", "Miss_Type\nTOO1")
-            c = self.cibles.get(self.sta)
+            else:
+                t = t.replace("MISSION_Type\nPP1", "MISSION_Type\nPP%d" % pp).replace("Miss_Type\nPP1", "Miss_Type\nPP%d" % pp)
+            c = self.cibles.get((self.sta, pp))
             if c:
                 def dms(v):
                     dd = int(v); mm = int((v - dd) * 60); ss = ((v - dd) * 60 - mm) * 60
@@ -560,7 +563,8 @@ def scenario_navigation(hornet, port=7790, stop=None, nav=None, port_ordres=None
                 nav.sols[m[1]] = 250.0
         paquet = {"k": "etat", "t": 0, "avion": "FA-18C_hornet", "rwr": "",
                   "emport": {"courante": 0, "obus": 578, "stations": [
-                      {"st": s, "nom": "GBU-38(V)1/B", "n": 1} for s in (2, 3, 7, 8)]},
+                      {"st": s, "nom": "GBU-38(V)1/B", "n": getattr(nav, "nb_bombes", {}).get(s, 1)}
+                      for s in (2, 3, 7, 8)]},
                   "pos": {"lat": nav.avion[0], "lon": nav.avion[1], "alt": 3000, "cap": 0},
                   "vue": {"lat": 41.75, "lon": 41.70, "sol": 120.0, "haut": 20000},
                   "sols": dict(nav.sols),

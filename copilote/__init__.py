@@ -1,3 +1,3 @@
 """Copilote F/A-18C pour DCS World, pilote au Stream Deck XL."""
 
-__version__ = "0.20.2"
+__version__ = "0.21.0"

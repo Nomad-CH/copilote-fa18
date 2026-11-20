@@ -165,6 +165,8 @@ class Carnet:
         self.choisi = 0
         self.tacan = 0
         self.cible = None          # numero vers lequel aller (fenetre)
+        self.jdam_doubles = {}     # stations dont la 2e bombe attend sa cible (PP2)
+        self.jdam_a_basculer = []  # stations a passer sur PP2 des que c'est calme
         self.cap_demande = None    # pilote auto sur un cap : None = cap actuel, nombre, ("wpt", n)
         self.fin_mission = 0.0     # derniere heure ou la mission precedente tournait
         self.t_modele = None       # horloge de cette mission (DCS), pour reperer une nouvelle mission

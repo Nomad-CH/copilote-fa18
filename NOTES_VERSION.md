@@ -1,6 +1,6 @@
-**Version 0.20.2** — leurres automatiques, cap en HSEL, armes prêtes
+**Version 0.21.0** — deux cibles par pylône double
 
-- Leurres : la trace de vol a montré que, par l'ancienne méthode, seul le premier appui larguait. Le copilote appuie maintenant sur l'interrupteur par le lien direct avec DCS, à chaque fois. C'est ce qui bloquait la défense AUTO.
-- DISPENSER mis sur BYPASS dès le démarrage et le fence in.
-- Cap en HSEL : le copilote croyait voir la saisie du cap alors que l'UFC affichait le menu du pilote auto (qui contient aussi le mot HSEL). Il attend maintenant la vraie saisie avant de taper le cap.
-- Écran ARMES : quand RDY est affiché sous le type choisi (J-82, J-83), toutes les armes de ce type passent au vert et le restent. La page STORES est lue sur les trois écrans, pas seulement le DDI gauche.
+- Écran ARMES : un pylône qui porte deux JDAM affiche deux lignes, « bombe 1 » et « bombe 2 ». Chaque bombe reçoit sa propre cible (waypoint ou coordonnées tapées).
+- Le copilote programme la première cible dans PP1 et la deuxième dans PP2 de la même station, relit les deux, puis laisse PP1 sélectionné.
+- Après le largage de la première bombe, il attend 8 secondes sans autre largage, puis passe la station sur PP2 tout seul et annonce « Deuxième cible sélectionnée ». Un bouton « PASSER SUR LA 2e CIBLE » permet de le faire à la main.
+- Le diagnostic note ce que l'avion affiche juste après un largage sur pylône double, pour vérifier ce comportement en vol.

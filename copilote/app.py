@@ -41,6 +41,9 @@ class Copilote:
         from .trace import Trace
         self.trace = Trace(self.boite.dossier)
         self._derniere_trace = 0.0
+        self._dernier_double = 0.0
+        self._compte_doubles = {}       # station -> nombre de bombes vu au dernier passage
+        self._dernier_largage = 0.0
         self.nav = Carnet(_os.path.join(DONNEES, "points.json"))
         self.nav.tacan = 0
         self.ex.nav = self.nav
@@ -257,6 +260,30 @@ class Copilote:
         self.boite.ecrire("largage_selectif", mode=mode, stations=[s for s, _ in choisies],
                           quoi=quoi)
 
+    def _suivre_doubles(self, maintenant):
+        """Pylone double programme sur deux cibles : quand sa premiere bombe est partie,
+        la station doit passer sur PP2. On attend 8 secondes sans largage pour ne pas
+        toucher aux ecrans au milieu d'une passe de tir."""
+        nav, x = self.nav, self.export
+        if x is None or not x.vivant:
+            return
+        if not nav.jdam_doubles:
+            self._compte_doubles = {}
+        emport = x.stations()
+        for st in list(nav.jdam_doubles):
+            n = emport.get(st, ("", 0))[1]
+            avant = self._compte_doubles.get(st)
+            self._compte_doubles[st] = n
+            if avant is not None and n < avant:
+                self._dernier_largage = maintenant
+                del nav.jdam_doubles[st]
+                if n >= 1 and st not in nav.jdam_a_basculer:
+                    nav.jdam_a_basculer.append(st)
+        if (nav.jdam_a_basculer and maintenant - self._dernier_largage > 8
+                and self.cfg.get("jdam_deuxieme_cible_auto", True)
+                and not self.ex.en_cours and not self.a.au_sol):
+            self.ex.lancer("jdam_cible2")
+
     # stations que le largage selectif sait larguer (les autres n'ont pas de bouton)
     STATION_BOUTON = {5: "SJ_CTR", 3: "SJ_LI", 2: "SJ_LO", 7: "SJ_RI", 8: "SJ_RO"}
 
@@ -472,6 +499,13 @@ class Copilote:
                 self.surv.tick()
             except Exception as ex:   # la surveillance ne doit jamais arreter le copilote
                 self.boite.erreur("surveillance", ex)
+
+        if en_f18 and maintenant - self._dernier_double > 1.0:
+            self._dernier_double = maintenant
+            try:
+                self._suivre_doubles(maintenant)
+            except Exception as ex:
+                self.boite.erreur("pylônes doubles", ex)
 
         if en_f18 and maintenant - self._derniere_trace > 1.0:
             self._derniere_trace = maintenant
