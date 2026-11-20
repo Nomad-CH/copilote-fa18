@@ -19,6 +19,7 @@ import time
 from .exportdcs import elements
 
 AMPCD = "AMPCD_PB_"
+ECRAN_AMPCD = 4
 NM = 1852.0
 PIEDS = 3.28084
 
@@ -362,8 +363,29 @@ def _appuyer(r, ident, duree=0.2):
     r.attendre(0.3)
 
 
+def _afficher_hsi(r):
+    """La HSI n'est pas sur l'AMPCD (page SA, par exemple) : MENU jusqu'au menu qui
+    propose HSI, puis HSI. Rien n'est appuye si l'ecran n'est pas lisible."""
+    x = r.export
+    if x is None or not x.vivant:
+        return None
+    for _ in range(3):
+        info = lire_hsi(x)
+        if info is not None:
+            return info
+        noms = [n.split("_")[0].strip() for n, v in elements(x.ecrans.get(ECRAN_AMPCD, ""))]
+        if "HSI" in noms:
+            _appuyer(r, "AMPCD_PB_02")                   # menu SUPT : HSI est en bas a gauche
+        else:
+            _appuyer(r, "AMPCD_PB_18")                   # MENU (TAC puis SUPT)
+        r.attendre(0.9)
+    return lire_hsi(x)
+
+
 def _hsi(r):
     info = lire_hsi(r.export)
+    if info is None:
+        info = _afficher_hsi(r)
     if info is None:
         raise Echec("Page HSI introuvable. Mets la HSI sur l'AMPCD.")
     return info
@@ -797,11 +819,17 @@ def _pilote(libelle, message):
             raise Echec("Négatif. Pilote automatique en vol uniquement.")
         if libelle == "CPL" and not _hsi(r)["tcn_encadre"]:
             _guidage_wpt(r)
-        for essai in range(2):
+        for essai in range(3):
             _appuyer(r, "UFC_AP")
             r.attendre(0.5)
+            if (libelle != "CPL" and libelle not in options_ufc(r.b)
+                    and option_choisie(r.b, "CPL")):
+                # couple sur la navigation : l'avion cache HSEL et ATTH. On decouple d'abord.
+                option_ufc(r, "CPL")
+                r.attendre(1.0)
+                continue
             if not option_ufc(r, libelle):
-                if essai == 0:
+                if essai < 2:
                     r.attendre(1.0)
                     continue
                 if libelle == "CPL":
@@ -856,45 +884,48 @@ def cap_vers(r, lat, lon):
     return round(vrai) % 360
 
 
+def _ufc_texte(b):
+    return ("".join(str(b.lire(n) or "") for n in ("UFC_SCRATCHPAD_STRING_1_DISPLAY",
+                                                   "UFC_SCRATCHPAD_STRING_2_DISPLAY"))
+            + " " + " ".join(options_ufc(b))).upper()
+
+
 def regler_hsel(r, cible):
-    """Amene le repere de cap (HSEL, lu sur la HSI) sur le cap voulu. Un appui sur
-    l'interrupteur HDG ne deplace le repere que d'un cran (vu en vol le 19 nov.) :
-    on envoie donc des rafales d'appuis tres courts, puis on relit."""
+    """Regle le cap selecte comme dans l'avion : interrupteur HDG maintenu jusqu'a ce
+    que HSEL s'affiche sur l'UFC, puis le cap tape au clavier et ENT. (Les appuis
+    en rafale de la version precedente laissaient l'interrupteur enfonce.)"""
+    cible = int(cible) % 360
+    try:
+        r.b.envoyer("LEFT_DDI_HDG_SW", 2)
+        fin = r.horloge() + 6
+        vu = False
+        while r.horloge() < fin:
+            r.attendre(0.25)
+            if "HSEL" in _ufc_texte(r.b).replace(" ", ""):
+                vu = True
+                break
+    finally:
+        r.b.envoyer("LEFT_DDI_HDG_SW", 1)                # toujours relache, deux fois
+        time.sleep(0.1)
+        r.b.envoyer("LEFT_DDI_HDG_SW", 1)
+    if not vu:
+        if getattr(r, "boite", None) is not None:
+            r.boite.ecrire("hsel_ufc_absent", cible=cible, ufc=_ufc_texte(r.b),
+                           bloc=[str(r.b.lire(n)) for n in ("UFC_SCRATCHPAD_STRING_1_DISPLAY",
+                                                            "UFC_SCRATCHPAD_STRING_2_DISPLAY",
+                                                            "UFC_SCRATCHPAD_NUMBER_DISPLAY")])
+        raise Echec("HSEL ne s'est pas affiché sur l'UFC. Règle le cap avec l'interrupteur HDG.")
+    r.attendre(0.3)
+    taper(r, f"{cible:03d}" if cible else "360")
+    entrer(r)
+    r.attendre(0.8)
     info = lire_hsi(r.export)
-    if info is None or info.get("hsel") is None:
-        raise Echec("Affiche la HSI : j'ai besoin de lire le cap sélecté.")
-    sens = {1: 2, -1: 0}                                # ecart positif -> interrupteur vers la droite
-    fin = r.horloge() + 40
-    immobile = 0
-    while r.horloge() < fin:
-        info = lire_hsi(r.export)
-        if info is None or info.get("hsel") is None:
-            raise Echec("HSI masquée pendant le réglage du cap.")
-        e = _ecart(cible, info["hsel"])
-        if abs(e) <= 1:
-            return info["hsel"]
-        coups = max(1, min(30, int(abs(e) * 0.8)))      # un peu moins que l'ecart : pas de depassement
-        for _ in range(coups):
-            r.b.envoyer("LEFT_DDI_HDG_SW", sens[1 if e > 0 else -1])
-            time.sleep(0.035)
-            r.b.envoyer("LEFT_DDI_HDG_SW", 1)
-            time.sleep(0.035)
-        r.attendre(0.3)
-        apres = lire_hsi(r.export)
-        if apres is not None and apres.get("hsel") is not None:
-            bouge = _ecart(apres["hsel"], info["hsel"])
-            if abs(bouge) < 1:
-                immobile += 1
-                if immobile >= 5:                       # le repere ne bouge pas du tout
-                    break
-            else:
-                immobile = 0
-                if (bouge > 0) != (e > 0):              # l'interrupteur tourne dans l'autre sens
-                    sens = {1: sens[-1], -1: sens[1]}
-    r.b.envoyer("LEFT_DDI_HDG_SW", 1)
-    if getattr(r, "boite", None) is not None:
-        r.boite.ecrire("hsel_non_regle", cible=cible, hsel=(lire_hsi(r.export) or {}).get("hsel"))
-    raise Echec("Je n'arrive pas à régler le cap sélecté. Règle-le avec l'interrupteur HDG.")
+    lu = info.get("hsel") if info else None
+    if lu is not None and abs(_ecart(cible, lu)) > 2:
+        if getattr(r, "boite", None) is not None:
+            r.boite.ecrire("hsel_non_regle", cible=cible, hsel=lu, ufc=_ufc_texte(r.b))
+        raise Echec(f"Cap sélecté resté sur {lu:03d}. Règle-le avec l'interrupteur HDG.")
+    return cible
 
 
 def pilote_cap_actuel(r):

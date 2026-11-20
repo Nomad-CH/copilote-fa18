@@ -316,7 +316,7 @@ class Surveillance:
         t["paquets"] += 1
         t["dernier"] = maintenant
         if t["paquets"] == 1:
-            self._dire("Paillettes automatiques.", True)
+            self._dire("Tir détecté. Paillettes automatiques.", True)
         try:
             self.larguer("chaff", True)
         except TypeError:

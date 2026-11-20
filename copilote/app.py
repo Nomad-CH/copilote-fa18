@@ -77,58 +77,47 @@ class Copilote:
     _silence_leurres = False
 
     def _larguer(self, sorte, auto=False):
-        """Leurres. Constate en vol le 19 nov. : sur ON rien ne part (l'ALE-47 reste
-        en veille), sur BYPASS (position 2) un appui = un leurre. Dans DCS il faut
-        aussi un mode A/A ou A/G : le copilote passe en A/G tout seul si besoin.
-        La position qui marche est retenue."""
+        """Leurres. DISPENSER sur BYPASS (position 2, confirmee en vol) : un appui = un
+        largage. Dans DCS il faut aussi un mode A/A ou A/G : le copilote passe en A/G
+        tout seul si besoin. On ne fait plus bouger le DISPENSER d'une position a
+        l'autre et on n'utilise plus le clic direct sur la manette : les deux
+        laissaient l'interrupteur de largage enfonce (leurres qui partaient seuls)."""
         # la defense automatique attend son tour ; un appui manuel en double est ignore
         if not self._verrou_leurres.acquire(blocking=auto, timeout=3 if auto else -1):
             return
         try:
             self._silence_leurres = auto
             b, a, x = self.b, self.a, self.export
-            voulue = int(self.cfg.get("leurres_position", 2))
-            essais = []
-            ok = None
-            for position in (voulue, 1 if voulue == 2 else 2):
-                if b.lire("CMSD_DISPENSE_SW") != position:
-                    b.envoyer("CMSD_DISPENSE_SW", position)
-                    time.sleep(0.5)
-                avant = x.leurres if (x is not None and x.vivant) else None
-                ok = self._appui_leurres(sorte, avant)
-                essais.append({"position": position, "ok": ok, "mode": self._mode_combat()})
-                if ok is False and not self._mode_combat() and not a.au_sol:
-                    b.envoyer("MASTER_MODE_AG", 1)
-                    time.sleep(0.3)
-                    b.envoyer("MASTER_MODE_AG", 0)
-                    time.sleep(0.8)
-                    if self._mode_combat():
-                        self.dire("Mode air-sol engagé pour les leurres.")
-                        ok = self._appui_leurres(sorte, avant)
-                        essais.append({"position": position, "ok": ok, "mode": True})
-                if ok is not False:
-                    break
-            if ok is False and b.lire("CMSD_DISPENSE_SW") != voulue:
-                b.envoyer("CMSD_DISPENSE_SW", voulue)        # on ne laisse pas l'interrupteur ailleurs
-            if ok and self.cfg.get("leurres_position") != essais[-1]["position"]:
-                self.cfg["leurres_position"] = essais[-1]["position"]
-                try:
-                    from .chemins import sauver_config
-                    sauver_config(self.cfg)
-                except OSError:
-                    pass
+            if b.lire("CMSD_DISPENSE_SW") != 2:
+                b.envoyer("CMSD_DISPENSE_SW", 2)
+                time.sleep(0.5)
+            if not self._mode_combat() and not a.au_sol:
+                b.envoyer("MASTER_MODE_AG", 1)
+                time.sleep(0.3)
+                b.envoyer("MASTER_MODE_AG", 0)
+                time.sleep(0.8)
+                if self._mode_combat():
+                    self.dire("Mode air-sol engagé pour les leurres.")
+            avant = x.leurres if (x is not None and x.vivant) else None
+            ok = self._appui_leurres(sorte, avant)
+            if ok is False:
+                time.sleep(0.4)
+                ok = self._appui_leurres(sorte, avant)      # un deuxieme appui, sans rien changer d'autre
             if ok is False:
                 manque = []
                 if not a.arme:
                     manque.append("master arm")
                 if not self._mode_combat():
                     manque.append("mode A/A ou A/G")
-                self.dire("Négatif, aucun largage." + (" Il manque : " + " et ".join(manque) + "." if manque else ""))
-                self.boite.ecrire("largage_sans_effet", leurre=sorte, essais=essais,
+                if not auto or manque:
+                    self.dire("Négatif, aucun largage." + (" Il manque : " + " et ".join(manque) + "." if manque else ""))
+                self.boite.ecrire("largage_sans_effet", leurre=sorte, auto=auto,
                                   leurres=x.leurres if x is not None else None,
                                   dispenser=b.lire("CMSD_DISPENSE_SW"), arme=bool(a.arme),
+                                  mode=self._mode_combat(),
                                   args=dict(x.args) if x is not None else None)
         finally:
+            b.envoyer("THROTTLE_DISP_SW", 1)                 # interrupteur de largage toujours relache
             self._verrou_leurres.release()
 
     def _mode_combat(self):
@@ -146,20 +135,19 @@ class Copilote:
         return x.leurres or avant
 
     def _appui_leurres(self, sorte, avant):
-        """Un appui sur l'interrupteur de la manette. -> True/False, None si invérifiable."""
-        b, x = self.b, self.export
+        """Un appui sur l'interrupteur de largage de la manette, toujours relache ensuite.
+        -> True/False, None si invérifiable."""
+        b = self.b
+        b.envoyer("THROTTLE_DISP_SW", 1)                     # part du centre
+        time.sleep(0.08)
         b.envoyer("THROTTLE_DISP_SW", 2 if sorte == "chaff" else 0)
-        time.sleep(0.25)
+        time.sleep(0.2)
         b.envoyer("THROTTLE_DISP_SW", 1)
+        time.sleep(0.05)
+        b.envoyer("THROTTLE_DISP_SW", 1)                     # relachement envoye deux fois
         if avant is None:
             return None
         apres = self._attendre_largage(avant)
-        if apres == avant and x.ordres_possibles:
-            cmd, val = (3032, 1) if sorte == "chaff" else (3033, -1)
-            x.clic(13, cmd, val)
-            time.sleep(0.3)
-            x.clic(13, cmd, 0)
-            apres = self._attendre_largage(avant)
         paillettes, ir = avant[0] - apres[0], avant[1] - apres[1]
         if paillettes <= 0 and ir <= 0:
             return False
@@ -234,6 +222,32 @@ class Copilote:
                   else f"Largage effectué. Stations {noms}.")
         self.boite.ecrire("largage_selectif", mode=mode, stations=[s for s, _ in choisies],
                           quoi=quoi)
+
+    # stations que le largage selectif sait larguer (les autres n'ont pas de bouton)
+    STATION_BOUTON = {5: "SJ_CTR", 3: "SJ_LI", 2: "SJ_LO", 7: "SJ_RI", 8: "SJ_RO"}
+
+    def larguer_stations(self, stations):
+        threading.Thread(target=self._larguer_stations, args=(list(stations),), daemon=True).start()
+
+    def _larguer_stations(self, stations):
+        """Largage selectif des stations choisies sur la tablette : le copilote
+        selectionne exactement ces stations, puis fait le largage habituel."""
+        from . import cockpit
+        voulus = {self.STATION_BOUTON[s] for s in stations if s in self.STATION_BOUTON}
+        refusees = [s for s in stations if s not in self.STATION_BOUTON]
+        if not voulus:
+            self.dire("Négatif. Pas de largage sélectif sur cette station.")
+            return
+        if self.a.au_sol:
+            self.dire("Négatif. Pas de largage au sol.")
+            return
+        for bouton in self.STATION_BOUTON.values():
+            if cockpit.station_choisie(self.export, self.b, bouton) != (bouton in voulus):
+                cockpit.basculer_station(self.export, self.cfg, self.boite, self.b, bouton)
+                time.sleep(0.3)
+        if refusees:
+            self.dire("Station " + ", ".join(map(str, refusees)) + " : pas de largage sélectif.")
+        self._largage_selectif()
 
     def station(self, bouton):
         threading.Thread(target=self._station, args=(bouton,), daemon=True).start()

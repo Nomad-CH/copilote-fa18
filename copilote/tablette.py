@@ -152,6 +152,16 @@ class Tablette:
             except Exception as ex:               # ne jamais faire tomber le serveur
                 self.app.boite.erreur("tablette etat", ex)
                 return self._repondre(h, 500, {"erreur": str(ex)})
+        if chemin.startswith("/guide/"):
+            # images du guide de l'utilisateur, gardees sur son PC (jamais dans le programme)
+            if not self._jeton_ok(h):
+                return self._repondre(h, 401, {"erreur": "code"})
+            from . import guide
+            f = guide.chemin_page(chemin[len("/guide/"):].replace(".jpg", ""))
+            if f is None:
+                return self._repondre(h, 404, "introuvable", "text/plain")
+            with open(f, "rb") as fd:
+                return self._repondre(h, 200, fd.read(), "image/jpeg")
         if chemin in ("", "/"):
             chemin = "/index.html"
         nom = os.path.normpath(chemin.lstrip("/")).replace("\\", "/")
@@ -264,11 +274,16 @@ class Tablette:
             "tacan": self.cfg.get("tacan") or [],
             "tacan_choisi": nav.tacan if t is not None else None,
             "armes": self._armes(x, vivant),
+            "guide": self._guide(),
             "jdam": {"stations": {str(k): v for k, v in stations_jdam(x).items()} if vivant else {},
                      "ordre": list(ORDRE_LARGAGE),
                      "choix": {str(k): (v if isinstance(v, int) else "coord")
                                for k, v in (getattr(nav, "jdam", {}) or {}).items()}},
         }
+
+    def _guide(self):
+        from . import guide
+        return guide.complet()
 
     def _armes(self, x, vivant):
         from .armement import famille, lire_ddi
@@ -400,6 +415,12 @@ class Tablette:
         if quoi == "aller":
             nav.cible = int(d["num"])
             return proc("aller_wpt")
+        if quoi == "jettison":
+            stations = [int(v) for v in (d.get("stations") or [])]
+            if not stations:
+                return {"ok": False, "message": "Choisis les charges à larguer."}
+            app.larguer_stations(stations)
+            return {"ok": True}
         if quoi == "ap_cap":
             vers = d.get("vers")
             if vers == "wpt":

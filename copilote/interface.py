@@ -1101,4 +1101,38 @@ class FenetreTablette:
         tk.Label(f, text="CODE : " + " ".join(code_acces(ui.cfg)), bg=FOND, fg=AMBRE,
                  font=ui.p_titre).pack(pady=(6, 4))
         tk.Label(f, text="Si Windows demande l'autorisation du pare-feu : coche « Réseaux privés ».",
-                 bg=FOND, fg=GRIS, font=ui.p_petit).pack(padx=20, pady=(4, 14))
+                 bg=FOND, fg=GRIS, font=ui.p_petit).pack(padx=20, pady=(4, 8))
+        # images du guide de reference : celles de l'utilisateur, gardees sur ce PC
+        from . import guide
+        self.etat_guide = tk.Label(f, bg=FOND, fg=PALE, font=ui.p_petit, justify="center")
+        self.etat_guide.pack(padx=20)
+        tk.Button(f, text="IMAGES DU GUIDE…", command=self._guide, bg=FOND, fg=VERT,
+                  activebackground=FOND, activeforeground=VERT, relief="flat", bd=0,
+                  highlightthickness=1, highlightbackground=LIGNE, font=ui.p_texte,
+                  padx=14, pady=6).pack(pady=(4, 14))
+        self._dire_guide(guide)
+
+    def _dire_guide(self, guide):
+        self.etat_guide.config(text="Images du guide : installées (écran ARMES de la tablette)."
+                               if guide.complet() else
+                               "Images du guide : pas encore installées.\n"
+                               "Choisis ton fichier DCS_ReferenceGuide_v35.zip.")
+
+    def _guide(self):
+        from tkinter import filedialog, messagebox
+        from . import guide
+        self.f.attributes("-topmost", False)
+        chemin = filedialog.askopenfilename(parent=self.f, title="Ton fichier du guide (zip)",
+                                            filetypes=[("Guide de référence", "*.zip"), ("Tous", "*.*")])
+        self.f.attributes("-topmost", True)
+        if not chemin:
+            return
+        try:
+            n = guide.importer(chemin)
+        except Exception as ex:
+            messagebox.showerror("Guide", f"Fichier illisible : {ex}", parent=self.f)
+            return
+        if not guide.complet():
+            messagebox.showwarning("Guide", f"{n} page(s) trouvée(s) sur 5. "
+                                   "Il faut le zip complet DCS_ReferenceGuide_v35.", parent=self.f)
+        self._dire_guide(guide)

@@ -174,9 +174,28 @@ function esc(t) { return String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp
 $$("#onglets button").forEach((b) => b.onclick = () => {
   $$("#onglets button").forEach((x) => x.classList.toggle("actif", x === b));
   $$(".onglet").forEach((o) => (o.hidden = o.id !== "o-" + b.dataset.onglet));
-  $("main").classList.toggle("armes", b.dataset.onglet === "jdam");
+  $("main").classList.toggle("sans-carte", b.dataset.onglet !== "plan");     // la carte : onglet PLAN seulement
   if (carte) setTimeout(() => carte.invalidateSize(), 80);
 });
+// plein ecran, et ecran qui ne s'eteint pas (verrou d'ecran si le navigateur le permet,
+// sinon une petite video muette qui tourne en boucle)
+let verrouEcran = null;
+async function garderAllume() {
+  try {
+    if (navigator.wakeLock) { verrouEcran = await navigator.wakeLock.request("screen"); return; }
+  } catch (e) { /* pas permis : on passe a la video */ }
+  try { const v = $("#veille"); v.hidden = false; v.volume = 0.01; await v.play(); } catch (e) { /* rien */ }
+}
+$("#b-plein").onclick = async () => {
+  const racine = document.documentElement;
+  try {
+    if (!document.fullscreenElement) await (racine.requestFullscreen || racine.webkitRequestFullscreen).call(racine);
+    else await document.exitFullscreen();
+  } catch (e) { toast("Plein écran refusé par le navigateur."); }
+  garderAllume();
+};
+document.addEventListener("fullscreenchange", () => ($("#b-plein").textContent = document.fullscreenElement ? "QUITTER" : "PLEIN ÉCRAN"));
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && (verrouEcran || !$("#veille").paused)) garderAllume(); });
 $$("[data-act]").forEach((b) => b.onclick = () => agir(b.dataset.act));
 $$("[data-mode]").forEach((b) => b.onclick = () => agir("defense", { mode: b.dataset.mode }));
 $("#b-chaff").onclick = () => agir("leurre", { sorte: "chaff" });
@@ -217,6 +236,18 @@ $("#b-jdam-prog").onclick = () => {
 $("#b-ap-cap").onclick = () => agir("ap_cap", { vers: "actuel" });
 $("#b-ap-wpt").onclick = () => agir("ap_cap", { vers: "wpt", num: $("#ap-wpt").value });
 $("#b-ap-deg").onclick = () => agir("ap_cap", { vers: "cap", cap: $("#ap-deg").value });
+$("#b-jettison").onclick = () => {
+  const b = $("#b-jettison");
+  if (!jettisonPret) {
+    jettisonPret = true;
+    b.textContent = "CONFIRMER LE LARGAGE";
+    setTimeout(() => { jettisonPret = false; b.textContent = "LARGUER (JETTISON)"; }, 4000);
+    return;
+  }
+  jettisonPret = false;
+  b.textContent = "LARGUER (JETTISON)";
+  agir("jettison", { stations: Array.from(selArmes) });
+};
 $("#b-jdam-too").onclick = () => agir("jdam_too", { num: $("#jdam-too-wpt").value, stations: Array.from(selArmes) });
 $$("#jdam-mode button").forEach((b) => (b.onclick = () => { jdamMode = b.dataset.m; $("#avion-armes").dataset.sig = ""; rendreArmes(); }));
 
@@ -343,6 +374,7 @@ function optionsWpt(valeur) {
 // Vue de l'avion (aile gauche a gauche, comme sur la page STORES). On touche une
 // arme pour la choisir ; plusieurs armes identiques peuvent etre choisies ensemble.
 const selArmes = new Set();
+let jettisonPret = false;       // le largage demande deux appuis
 let jdamMode = "PP";
 // Vue de face : l'aile gauche de l'avion (station 1) est a droite de l'image.
 const XS = [434, 383, 332, 281, 230, 179, 128, 77, 26];      // stations 1 a 9
@@ -449,8 +481,116 @@ function vueProfil(d, k) {
   if (d.optique) out += `<circle class="detail" cx="${f1(r * 0.9)}" cy="0" r="${f1(r * 0.6)}"/>`;
   return out;
 }
+// ------------------------------------------------- images du guide de l'utilisateur
+// Si l'utilisateur a installe son guide de reference sur le PC, on affiche SES images
+// (l'avion et les armes), redessinees en vert. Elles ne sont pas dans le programme :
+// on ne garde ici que l'endroit ou elles se trouvent sur les pages (guide v35).
+const GUIDE_BOITES = {
+  86: { avion: [90, 773, 1531, 1227] },
+  88: { aim7: [560, 131, 1126, 224], aim9: [560, 512, 1126, 589], aim120: [560, 840, 1126, 924],
+        adm141: [560, 1197, 1126, 1286], agm62: [560, 1440, 1126, 1526], agm65: [560, 1679, 1126, 1765] },
+  89: { agm84: [560, 128, 1130, 221], agm88: [560, 533, 1130, 614], agm154: [560, 770, 1130, 867],
+        hydra: [576, 1141, 1552, 1243], zuni: [576, 1486, 1552, 1654] },
+  90: { bdu: [573, 128, 1552, 246], cbu: [573, 518, 1552, 646], gbu: [573, 792, 1552, 912], mk: [573, 1565, 1552, 1696] },
+  91: { litening: [576, 136, 1552, 272], atflir: [576, 421, 1552, 552], aww: [576, 947, 1552, 1058], bidon: [806, 1446, 1552, 1574] },
+};
+const GUIDE_CLE = { aim9: "aim9", aim120: "aim120", aim7: "aim7", mk82: "mk", mk83: "mk", mk84: "mk",
+  gbu12: "gbu", gbu16: "gbu", gbu10: "gbu", agm65: "agm65", agm88: "agm88", agm84: "agm84", agm62: "agm62",
+  agm154: "agm154", adm141: "adm141", bidon: "bidon", atflir: "atflir", lau: "hydra" };
+const imgGuide = {};           // cle -> { url, w, h }
+let guideDemande = false;
+function enVert(bitmap, boite, epaissir) {
+  const [x1, y1, x2, y2] = boite, w = x2 - x1, h = y2 - y1;
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.drawImage(bitmap, x1, y1, w, h, 0, 0, w, h);
+  const im = g.getImageData(0, 0, w, h), d = im.data;
+  const f0 = [d[4 * (3 * w + 3)], d[4 * (3 * w + 3) + 1], d[4 * (3 * w + 3) + 2]];   // couleur du fond
+  let gx = w, gy = h, dx = 0, dy = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = 4 * (y * w + x);
+    const ecart = Math.abs(d[i] - f0[0]) + Math.abs(d[i + 1] - f0[1]) + Math.abs(d[i + 2] - f0[2]);
+    const alpha = ecart < 60 ? 0 : Math.min(255, ecart * 1.8);
+    d[i] = 61; d[i + 1] = 220; d[i + 2] = 110; d[i + 3] = alpha;       // le vert de l'application
+    if (alpha > 90) { if (x < gx) gx = x; if (x > dx) dx = x; if (y < gy) gy = y; if (y > dy) dy = y; }
+  }
+  g.putImageData(im, 0, 0);
+  if (dx <= gx || dy <= gy) return null;
+  const r = document.createElement("canvas");            // rogne au dessin
+  r.width = dx - gx + 1; r.height = dy - gy + 1;
+  const gr = r.getContext("2d");
+  // les petits dessins ont des traits tres fins : on les epaissit d'un pixel pour qu'ils restent lisibles
+  (epaissir ? [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] : [[0, 0]]).forEach(([ox, oy]) =>
+    gr.drawImage(c, gx, gy, r.width, r.height, ox, oy, r.width, r.height));
+  return { url: r.toDataURL("image/png"), w: r.width, h: r.height };
+}
+async function chargerGuide() {
+  if (guideDemande || !etat || !etat.guide) return;
+  guideDemande = true;
+  for (const [page, boites] of Object.entries(GUIDE_BOITES)) {
+    try {
+      const rep = await fetch(`/guide/${page}.jpg`, { headers: { "X-Jeton": jeton } });
+      if (!rep.ok) continue;
+      const bitmap = await createImageBitmap(await rep.blob());
+      for (const [cle, boite] of Object.entries(boites)) {
+        const res = enVert(bitmap, boite, cle !== "avion");
+        if (res) imgGuide[cle] = res;
+      }
+    } catch (e) { /* page absente ou illisible : on garde les dessins du copilote */ }
+  }
+  $("#avion-armes").dataset.sig = "";
+  rendreArmes();
+}
+function imageArme(a) {
+  const d = ficheArme(a), n = ((a.nom || "") + " " + (a.type || "")).toUpperCase();
+  const cle = Object.keys(ARMES_DIM).find((k) => ARMES_DIM[k] === d);
+  if (/LITENING|AAQ/.test(n) && imgGuide.litening) return imgGuide.litening;
+  if (/ZUNI|LAU-10/.test(n) && imgGuide.zuni) return imgGuide.zuni;
+  if (/CBU|ROCKEYE|MK[-_ ]?20/.test(n) && imgGuide.cbu) return imgGuide.cbu;
+  if (/BDU/.test(n) && imgGuide.bdu) return imgGuide.bdu;
+  if (/AWW/.test(n) && imgGuide.aww) return imgGuide.aww;
+  return imgGuide[GUIDE_CLE[cle]] || null;
+}
+// Profil d'une arme, nez en haut, dans une case : l'image du guide, sinon le trace du copilote.
+function profilDebout(a, cx, cy, longMax, largMax) {
+  const im = imageArme(a), d = ficheArme(a);
+  if (im) {
+    const L = Math.min(longMax, largMax * (im.w / im.h)), T = (L * im.h) / im.w;
+    return `<g transform="translate(${cx},${cy}) rotate(90)"><image href="${im.url}" x="${f1(-L / 2)}" y="${f1(-T / 2)}" width="${f1(L)}" height="${f1(T)}"/></g>`;
+  }
+  const demi = Math.max(d.D / 2, ...(d.ail || []).map((j) => j.h));
+  const k = Math.min(longMax / d.L, largMax / (2 * demi));
+  return `<g transform="translate(${cx},${f1(cy - (d.L * k) / 2)}) rotate(90)">${vueProfil(d, k)}</g>`;
+}
+// Emplacement des points d'emport sur le dessin du guide (mesure sur l'image), stations 1 a 9.
+const GUIDE_PYL = [[0.994, 0.803], [0.797, 0.919], [0.697, 0.907], [0.548, 0.955], [0.5, 0.993], [0.452, 0.955], [0.303, 0.907], [0.203, 0.919], [0.006, 0.803]];
+function pylonesActifs() {
+  const im = imgGuide.avion;
+  if (!im) return PYLONES.map(([x, y]) => [x, y - 6]);
+  const W = 416, H = (W * im.h) / im.w;
+  return GUIDE_PYL.map(([fx, fy]) => [f1(22 + fx * W), f1(2 + fy * H)]);
+}
+function chargesSousAvion(sts, pyl) {
+  return sts.map((a) => {
+    if (!a.n) return "";
+    const [px, py] = pyl[a.st - 1], d = ficheArme(a), r = (d.D / 2) * ECH;
+    const bas = d.boite ? (d.boite[1] / 2) * ECH : r;
+    const un = (cx) => `<g transform="translate(${cx},${f1(py + bas + 0.8)})">${vueFace(d, ECH)}</g>`;
+    const ecart = Math.max(r, 3.2) + 1.6;
+    return a.n >= 2 ? `<path class="rack" d="M${f1(px - ecart)} ${py} H${f1(px + ecart)}"/>` + un(f1(px - ecart)) + un(f1(px + ecart)) : un(px);
+  }).join("");
+}
+function avionDuGuide(sts, pyl) {
+  const im = imgGuide.avion, W = 416, H = (W * im.h) / im.w;
+  return `<image href="${im.url}" x="22" y="2" width="${W}" height="${f1(H)}"/>${chargesSousAvion(sts, pyl)}`;
+}
 function dessinArme(a, x) {
   if (!a.n) return "";
+  if (imgGuide.avion) {                                   // guide installe : profils, nez en haut
+    if (a.n >= 2) return profilDebout(a, x - 10.5, 168, 64, 17) + profilDebout(a, x + 10.5, 168, 64, 17);
+    return profilDebout(a, x, 168, 66, 36);
+  }
   const d = ficheArme(a), demi = Math.max(d.D / 2, ...(d.face || []).map((j) => j.h), d.boite ? d.boite[1] / 2 : 0);
   const deux = a.n >= 2, place = deux ? 10.5 : 21;
   const k = Math.min(62, place / demi);                 // meme echelle pour toutes, reduite si l'arme deborde
@@ -499,7 +639,8 @@ function rendreArmes() {
   Array.from(selArmes).forEach((st) => { const a = sts.find((x) => x.st === st); if (!a || !a.n) selArmes.delete(st); });
   if (noms.size > 1) selArmes.clear();
   const choisies = sts.filter((a) => selArmes.has(a.st));
-  const sig = JSON.stringify([sts, Array.from(selArmes), jdamMode, etat.plan.map((p) => [p.num, p.nom])]);
+  chargerGuide();
+  const sig = JSON.stringify([sts, Array.from(selArmes), jdamMode, etat.plan.map((p) => [p.num, p.nom]), Object.keys(imgGuide).length]);
   const zone = $("#avion-armes");
   if (zone.dataset.sig === sig) return;
   zone.dataset.sig = sig;
@@ -519,14 +660,15 @@ function rendreArmes() {
   }).join("");
   // l'avion occupe le haut (charges a leur vraie place et a l'echelle), les cases sont dessous
   // un trait relie chaque point d'emport a sa case
+  const pyl = pylonesActifs();
   const fils = toutes.map((a) => {
-    const x = XS[a.st - 1], [px, py] = PYLONES[a.st - 1], d = a.n ? ficheArme(a) : null;
+    const x = XS[a.st - 1], [px, py] = pyl[a.st - 1], d = a.n ? ficheArme(a) : null;
     const bas = d ? Math.max(d.D, d.boite ? d.boite[1] : 0) * ECH + 5 : 3;
     const cls = "fil" + (a.n ? "" : " vide") + (selArmes.has(a.st) ? " sel" : "");
-    return `<path class="${cls}" d="M${px} ${f1(py - 6 + bas)} L${px} ${f1(Math.max(py - 6 + bas, 146))} L${x} 154 V158"/>`;
+    return `<path class="${cls}" d="M${px} ${f1(py + bas)} L${px} ${f1(Math.max(py + bas, 146))} L${x} 154 V158"/>`;
   }).join("");
   zone.innerHTML = `<svg viewBox="0 0 460 262" role="img" aria-label="Avion vu de face et armement">
-    <g transform="translate(0,-6)">${hornetDeFace(toutes)}</g>
+    ${imgGuide.avion ? avionDuGuide(toutes, pyl) : `<g transform="translate(0,-6)">${hornetDeFace(toutes)}</g>`}
     ${fils}<g transform="translate(0,34)">${stations}</g></svg>`;
   zone.querySelectorAll("g.st").forEach((g) => {
     g.onclick = () => {
@@ -541,44 +683,41 @@ function rendreArmes() {
   $("#armes-vu").textContent = ar.stores_vu === null || ar.stores_vu === undefined
     ? "· affiche la page STORES pour lire l'état" : ar.stores_vu > 20 ? `· état lu il y a ${ar.stores_vu} s` : "";
 
-  // raccourcis : toutes les armes identiques d'un coup
+  // raccourci : les autres armes identiques a celle qui est choisie, d'un coup
   const rac = $("#armes-raccourcis");
   rac.innerHTML = "";
-  const groupes = {};
-  sts.filter((a) => a.n && !["bidon", "pod", "vide"].includes(a.famille)).forEach((a) => (groupes[nomArme(a)] = (groupes[nomArme(a)] || []).concat(a)));
-  Object.entries(groupes).forEach(([nom, liste]) => {
-    if (liste.length < 2) return;
-    const b = document.createElement("button");
-    b.textContent = `TOUTES LES ${liste[0].court}`;
-    b.onclick = () => { selArmes.clear(); liste.forEach((a) => selArmes.add(a.st)); rendreArmes(); };
-    rac.appendChild(b);
-  });
+  if (choisies.length) {
+    const pareilles = sts.filter((a) => a.n && nomArme(a) === nomArme(choisies[0]));
+    if (pareilles.length > choisies.length) {
+      const feminin = ["jdam", "laser", "bombe", "roquette", "walleye"].includes(choisies[0].famille);
+      const b = document.createElement("button");
+      b.textContent = `${feminin ? "TOUTES" : "TOUS"} LES ${choisies[0].court}`;
+      b.onclick = () => { pareilles.forEach((a) => selArmes.add(a.st)); rendreArmes(); };
+      rac.appendChild(b);
+    }
+  }
   rac.hidden = !rac.children.length;
 
-  // ce qu'on peut faire avec la selection
-  const titre = $("#armes-titre"), pj = $("#p-jdam"), pa = $("#p-autre");
+  // ce qu'on peut faire avec la selection : seulement ce qui existe, plus le largage
+  const titre = $("#armes-titre"), pj = $("#p-jdam"), jet = $("#armes-jettison");
   titre.classList.toggle("choix", choisies.length > 0);
   $("#armes-profil").hidden = !choisies.length;
+  jet.hidden = !choisies.length;
+  jettisonPret = false;
+  $("#b-jettison").textContent = "LARGUER (JETTISON)";
   if (!choisies.length) {
     titre.textContent = "Touche une arme sur l'avion. Tu peux en toucher plusieurs du même type.";
-    pj.hidden = pa.hidden = true;
+    pj.hidden = true;
   } else {
     const total = choisies.reduce((n, a) => n + a.n, 0), fam = choisies[0].famille;
-    const d = ficheArme(choisies[0]);
+    const d = ficheArme(choisies[0]), im = imageArme(choisies[0]);
     titre.textContent = `${total} × ${choisies[0].court} · station${choisies.length > 1 ? "s" : ""} ${choisies.map((a) => a.st).join(", ")}`;
-    // le profil de l'arme choisie, a l'echelle (70 pixels par metre)
+    const dessin = im
+      ? `<image href="${im.url}" x="${f1(170 - Math.min(300, 64 * (im.w / im.h)) / 2)}" y="${f1(42 - Math.min(64, 300 * (im.h / im.w)) / 2)}" width="${f1(Math.min(300, 64 * (im.w / im.h)))}" height="${f1(Math.min(64, 300 * (im.h / im.w)))}"/>`
+      : `<g transform="translate(${f1((340 - d.L * 70) / 2)},42)">${vueProfil(d, 70)}</g>`;
     $("#armes-profil").innerHTML = `<svg viewBox="0 0 340 96" role="img" aria-label="Profil de l'arme">
-      <g transform="translate(${f1((340 - d.L * 70) / 2)},42)">${vueProfil(d, 70)}</g>
-      <text x="170" y="92">${esc(d.nom)} · ${esc(d.guidage)} · ${String(d.L).replace(".", ",")} m</text></svg>`;
+      ${dessin}<text x="170" y="92">${esc(d.nom)} · ${esc(d.guidage)} · ${String(d.L).replace(".", ",")} m</text></svg>`;
     pj.hidden = fam !== "jdam";
-    pa.hidden = fam === "jdam";
-    pa.textContent = {
-      aa: "Missiles air-air : sélection et annonces de tir à venir.",
-      laser: "Bombes laser : code laser et pod de ciblage à venir (prochaine étape de la feuille de route).",
-      maverick: "Maverick : à venir.", harm: "HARM : à venir.", jsow: "JSOW : à venir, comme les JDAM.",
-      bombe: "Bombes lisses : mode CCIP / AUTO, quantité, intervalle à venir.",
-      bidon: "Bidon : pas de réglage.", pod: "Pod : à venir avec les armes laser.",
-    }[fam] || "Réglages de cette arme : à venir.";
   }
   if (!pj.hidden) rendreJdam(choisies);
   const ap = $("#ap-wpt"), va = ap.value;

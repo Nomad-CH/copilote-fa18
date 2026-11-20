@@ -138,7 +138,9 @@ details.saisie .rangee { margin-top: 8px; }
 @media (max-width: 820px) and (orientation: portrait) {
   main { flex-direction: column; }
   #bandeau { gap: 8px; padding: 6px 8px; }
-  .pastille { font-size: 11px; padding: 5px 8px; max-width: 150px; }
+  .pastille { font-size: 10px; padding: 5px 6px; max-width: 66px; }
+  #b-plein { min-width: 0; min-height: 30px; padding: 0 4px; font-size: 9px; letter-spacing: 0; }
+  .info { min-width: 40px; }
   .info { min-width: 46px; }
   .info span:last-child { font-size: 15px; }
   .espace { flex: 0 0 100%; height: 0; margin: -4px 0; }
@@ -204,6 +206,16 @@ details.saisie .rangee { margin-top: 8px; }
 .segment.large button { flex: 1; min-width: 0; font-size: 13px; padding: 0 6px; }
 #armes-titre.choix { color: var(--vert); font-size: 16px; font-weight: bold; }
 /* tablette : l'onglet ARMES prend plus de place que la carte */
+
+/* la carte ne sert que sur l'onglet PLAN : ailleurs, le panneau prend tout l'ecran */
+main.sans-carte #carte { display: none; }
+main.sans-carte #panneau { max-width: none; min-width: 0; flex: 1; border-left: 0; border-top: 0; }
+#b-plein { min-width: 0; min-height: 40px; padding: 0 10px; font-size: 11px; }
+#veille { position: fixed; width: 1px; height: 1px; opacity: 0.01; left: 0; bottom: 0; pointer-events: none; }
+#avion-armes svg { max-height: 62vh; }
+#avion-armes image { image-rendering: auto; }
 @media (min-width: 821px) {
-  main.armes #panneau { flex: 1.6; max-width: 62vw; }
+  main.sans-carte #o-jdam:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: 18px; align-items: start; }
+  main.sans-carte .onglet { padding-left: 18px; padding-right: 18px; }
+  main.sans-carte #o-tacan, main.sans-carte #o-avion, main.sans-carte #o-journal { max-width: 760px; margin: 0 auto; width: 100%; }
 }

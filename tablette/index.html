@@ -28,6 +28,7 @@
 <section id="appli" hidden>
   <header id="bandeau">
     <div id="etat-lien" class="pastille">—</div>
+    <button id="b-plein" class="discret" aria-label="Plein écran, écran toujours allumé">PLEIN ÉCRAN</button>
     <div class="info"><span class="lib">CARBU</span><span id="i-carbu">—</span></div>
     <div class="info"><span class="lib">ALT</span><span id="i-alt">—</span></div>
     <div class="info"><span class="lib">VIT</span><span id="i-vit">—</span></div>
@@ -82,30 +83,36 @@
 
       <!-- ARMES : vue de l'avion, on touche une arme pour voir ce qu'on peut en faire -->
       <div class="onglet" id="o-jdam" hidden>
-        <div id="avion-armes"></div>
-        <div class="legende"><span class="pt pret"></span>prête <span class="pt attente"></span>en attente <span class="pt inconnu"></span>état non lu <span id="armes-vu"></span></div>
-        <div id="armes-titre" class="aide">Touche une arme sur l'avion. Tu peux en toucher plusieurs du même type.</div>
-        <div id="armes-profil" hidden></div>
-        <div class="rangee" id="armes-raccourcis"></div>
-
-        <div id="p-jdam" hidden>
-          <div class="segment large" id="jdam-mode">
-            <button data-m="PP" class="actif">PP · une cible par bombe</button>
-            <button data-m="TOO">TOO · le waypoint désigné</button>
-          </div>
-          <div id="jdam-pp">
-            <div id="jdam-stations"></div>
-            <div class="rangee"><button id="b-jdam-prog" class="principal">PROGRAMMER</button></div>
-          </div>
-          <div id="jdam-too" hidden>
-            <div class="rangee">
-              <select id="jdam-too-wpt"></select>
-              <button id="b-jdam-too" class="principal">TOO SUR CE WAYPOINT</button>
-            </div>
-          </div>
-          <div class="aide">Le copilote met la fusée sur INST et vérifie les coordonnées relues dans la bombe.</div>
+        <div class="col-avion">
+          <div id="avion-armes"></div>
+          <div class="legende"><span class="pt pret"></span>prêt <span class="pt attente"></span>en attente <span class="pt inconnu"></span>état non lu <span id="armes-vu"></span></div>
         </div>
-        <div id="p-autre" class="aide" hidden></div>
+        <div class="col-options">
+          <div id="armes-titre" class="aide">Touche une arme sur l'avion. Tu peux en toucher plusieurs du même type.</div>
+          <div id="armes-profil" hidden></div>
+          <div class="rangee" id="armes-raccourcis"></div>
+
+          <div id="p-jdam" hidden>
+            <div class="segment large" id="jdam-mode">
+              <button data-m="PP" class="actif">PP · une cible par bombe</button>
+              <button data-m="TOO">TOO · le waypoint désigné</button>
+            </div>
+            <div id="jdam-pp">
+              <div id="jdam-stations"></div>
+              <div class="rangee"><button id="b-jdam-prog" class="principal">PROGRAMMER</button></div>
+            </div>
+            <div id="jdam-too" hidden>
+              <div class="rangee">
+                <select id="jdam-too-wpt"></select>
+                <button id="b-jdam-too" class="principal">TOO SUR CE WAYPOINT</button>
+              </div>
+            </div>
+            <div class="aide">Le copilote met la fusée sur INST et vérifie les coordonnées relues dans la bombe.</div>
+          </div>
+          <div class="rangee" id="armes-jettison" hidden>
+            <button id="b-jettison" class="rouge">LARGUER (JETTISON)</button>
+          </div>
+        </div>
       </div>
 
       <!-- TACAN -->
@@ -171,5 +178,8 @@
 
 <script src="leaflet/leaflet.js"></script>
 <script src="app.js"></script>
+<video id="veille" loop playsinline hidden>
+  <source src="veille.webm" type="video/webm"><source src="veille.mp4" type="video/mp4">
+</video>
 </body>
 </html>
